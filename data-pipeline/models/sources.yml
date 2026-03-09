@@ -1,0 +1,17 @@
+version: 2
+
+sources:
+  - name: weather_ledger
+    description: Raw weather observations ingested from Open-Meteo.
+    database: weather
+    schema: main
+    tables:
+      - name: raw_weather
+        description: Daily precipitation and maximum temperature values for Fort Collins, Colorado.
+
+models:
+  - name: stg_raw_weather
+    description: Typed staging model over the raw weather source.
+
+  - name: fct_weather_history
+    description: Ordered fact table used by the frontend proof of concept.

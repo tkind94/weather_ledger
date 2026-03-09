@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install data pipeline dependencies
+        working-directory: data-pipeline
+        run: uv sync
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: bun install
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run weather fetch
+        working-directory: data-pipeline
+        run: uv run python fetch.py
+
+      - name: Run dbt build
+        working-directory: data-pipeline
+        run: DBT_PROFILES_DIR="$PWD/.dbt" uv run dbt build
+
+      - name: Run frontend checks
+        working-directory: frontend
+        run: bun run check
+
+      - name: Run frontend unit tests
+        working-directory: frontend
+        run: bun run test:unit -- --run
+
+      - name: Run frontend build
+        working-directory: frontend
+        run: bun run build
+
+      - name: Validate Docker Compose
+        run: docker compose config

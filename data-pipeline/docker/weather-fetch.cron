@@ -1,0 +1,4 @@
+SHELL=/bin/sh
+PATH=/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
+
+15 2 * * * root /app/data-pipeline/docker/run-fetch.sh >> /var/log/weather-fetch.log 2>&1

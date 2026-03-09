@@ -1,0 +1,17 @@
+// Deprecated for local/server deployment.
+// Weather Ledger now runs with SvelteKit adapter-node and Bun.
+// Keep this only if Cloudflare-specific deployment work returns later.
+
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "frontend",
+	"compatibility_date": "2026-03-08",
+	"compatibility_flags": ["nodejs_als"],
+	"main": ".svelte-kit/cloudflare/_worker.js",
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".svelte-kit/cloudflare"
+	},
+	"workers_dev": true,
+	"preview_urls": true
+}
