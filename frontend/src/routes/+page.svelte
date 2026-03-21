@@ -11,9 +11,10 @@
 
 	import type { WeatherObservation } from '$lib/weather';
 
-	let { data }: { data: { observations: WeatherObservation[] } } = $props();
+	let { data }: { data: { observations: WeatherObservation[]; monthlyExtremes: { monthly_max_c: number }[] } } = $props();
 
 	let observations = $derived(data.observations);
+	let monthlyExtremes = $derived(data.monthlyExtremes);
 	let observationCount = $derived(observations.length);
 	let totalPrecipitation = $derived(
 		observations.reduce((total, observation) => total + observation.precipitationMm, 0)
@@ -65,6 +66,12 @@
 			<p>Average daily high</p>
 			<strong>{averageHigh.toFixed(1)} C</strong>
 			<span>Seven-day rolling baseline for the POC</span>
+		</article>
+
+		<article class="metric-card">
+			<p>Monthly hottest (sample)</p>
+			<strong>{monthlyExtremes.length ? `${monthlyExtremes[monthlyExtremes.length - 1].monthly_max_c.toFixed(1)} C` : '—'}</strong>
+			<span>Latest month max temperature from dbt mart</span>
 		</article>
 		<article class="metric-card">
 			<p>Wettest day</p>

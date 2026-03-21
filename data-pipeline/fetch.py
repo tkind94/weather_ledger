@@ -29,7 +29,13 @@ class WeatherDay:
     longitude: float
     timezone: str
     max_temperature_c: float
+    min_temperature_c: float
+    avg_temperature_c: float
     precipitation_mm: float
+    wind_speed_kph: float
+    wind_gust_kph: float
+    wind_direction_deg: float
+    pressure_hpa: float
     source: str
     fetched_at: str
 
@@ -47,7 +53,11 @@ def fetch_payload(start_date: str, end_date: str) -> dict[str, object]:
         "longitude": LONGITUDE,
         "start_date": start_date,
         "end_date": end_date,
-        "daily": "precipitation_sum,temperature_2m_max",
+        "daily": (
+            "temperature_2m_max,temperature_2m_min,temperature_2m_mean,"
+            "precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,"
+            "wind_direction_10m_dominant,pressure_msl_mean"
+        ),
         "timezone": TIMEZONE,
     }
     last_error: Exception | None = None
@@ -57,7 +67,9 @@ def fetch_payload(start_date: str, end_date: str) -> dict[str, object]:
             time.sleep(backoff_seconds)
 
         try:
-            response = requests.get(API_URL, params=params, timeout=REQUEST_TIMEOUT_SECONDS)
+            response = requests.get(
+                API_URL, params=params, timeout=REQUEST_TIMEOUT_SECONDS
+            )
             response.raise_for_status()
             payload = response.json()
         except (requests.RequestException, ValueError) as error:
@@ -73,7 +85,7 @@ def fetch_payload(start_date: str, end_date: str) -> dict[str, object]:
     raise RuntimeError("Open-Meteo request failed after all retries") from last_error
 
 
-def require_daily_series(payload: dict[str, object], key: str) -> list[object]:
+def require_daily_series(payload: dict[str, object], key: str) -> list[float | int | str]:
     daily = payload.get("daily")
     if not isinstance(daily, dict):
         raise ValueError("Open-Meteo payload is missing a daily object")
@@ -91,8 +103,31 @@ def fetch_history() -> list[WeatherDay]:
     fetched_at = datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds")
 
     dates = [str(value) for value in require_daily_series(payload, "time")]
-    max_temperatures = [float(value) for value in require_daily_series(payload, "temperature_2m_max")]
-    precipitation = [float(value) for value in require_daily_series(payload, "precipitation_sum")]
+    max_temperatures = [
+        float(value) for value in require_daily_series(payload, "temperature_2m_max")
+    ]
+    min_temperatures = [
+        float(value) for value in require_daily_series(payload, "temperature_2m_min")
+    ]
+    avg_temperatures = [
+        float(value) for value in require_daily_series(payload, "temperature_2m_mean")
+    ]
+    precipitation = [
+        float(value) for value in require_daily_series(payload, "precipitation_sum")
+    ]
+    wind_speed = [
+        float(value) for value in require_daily_series(payload, "wind_speed_10m_max")
+    ]
+    wind_gust = [
+        float(value) for value in require_daily_series(payload, "wind_gusts_10m_max")
+    ]
+    wind_direction = [
+        float(value)
+        for value in require_daily_series(payload, "wind_direction_10m_dominant")
+    ]
+    pressure = [
+        float(value) for value in require_daily_series(payload, "pressure_msl_mean")
+    ]
 
     return [
         WeatherDay(
@@ -101,29 +136,48 @@ def fetch_history() -> list[WeatherDay]:
             longitude=LONGITUDE,
             timezone=TIMEZONE,
             max_temperature_c=max_temperature_c,
+            min_temperature_c=min_temperature_c,
+            avg_temperature_c=avg_temperature_c,
             precipitation_mm=precipitation_mm,
+            wind_speed_kph=wind_speed_kph,
+            wind_gust_kph=wind_gust_kph,
+            wind_direction_deg=wind_direction_deg,
+            pressure_hpa=pressure_hpa,
             source="open-meteo-historical",
             fetched_at=fetched_at,
         )
-        for weather_date, max_temperature_c, precipitation_mm in zip(
+        for weather_date, max_temperature_c, min_temperature_c, avg_temperature_c, precipitation_mm, wind_speed_kph, wind_gust_kph, wind_direction_deg, pressure_hpa in zip(
             dates,
             max_temperatures,
+            min_temperatures,
+            avg_temperatures,
             precipitation,
+            wind_speed,
+            wind_gust,
+            wind_direction,
+            pressure,
             strict=True,
         )
     ]
 
 
 def ensure_schema(connection: duckdb.DuckDBPyConnection) -> None:
+    connection.execute("DROP TABLE IF EXISTS raw_weather")
     connection.execute(
         """
-		CREATE TABLE IF NOT EXISTS raw_weather (
+		CREATE TABLE raw_weather (
 			weather_date DATE PRIMARY KEY,
 			latitude DOUBLE NOT NULL,
 			longitude DOUBLE NOT NULL,
 			timezone VARCHAR NOT NULL,
 			max_temperature_c DOUBLE NOT NULL,
+			min_temperature_c DOUBLE NOT NULL,
+			avg_temperature_c DOUBLE NOT NULL,
 			precipitation_mm DOUBLE NOT NULL,
+			wind_speed_kph DOUBLE NOT NULL,
+			wind_gust_kph DOUBLE NOT NULL,
+			wind_direction_deg DOUBLE NOT NULL,
+			pressure_hpa DOUBLE NOT NULL,
 			source VARCHAR NOT NULL,
 			fetched_at TIMESTAMP NOT NULL
 		)
@@ -143,19 +197,17 @@ def store_history(rows: list[WeatherDay]) -> None:
 			longitude,
 			timezone,
 			max_temperature_c,
+			min_temperature_c,
+			avg_temperature_c,
 			precipitation_mm,
+			wind_speed_kph,
+			wind_gust_kph,
+			wind_direction_deg,
+			pressure_hpa,
 			source,
 			fetched_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (weather_date) DO UPDATE SET
-			latitude = excluded.latitude,
-			longitude = excluded.longitude,
-			timezone = excluded.timezone,
-			max_temperature_c = excluded.max_temperature_c,
-			precipitation_mm = excluded.precipitation_mm,
-			source = excluded.source,
-			fetched_at = excluded.fetched_at
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		""",
             [
                 (
@@ -164,7 +216,13 @@ def store_history(rows: list[WeatherDay]) -> None:
                     row.longitude,
                     row.timezone,
                     row.max_temperature_c,
+                    row.min_temperature_c,
+                    row.avg_temperature_c,
                     row.precipitation_mm,
+                    row.wind_speed_kph,
+                    row.wind_gust_kph,
+                    row.wind_direction_deg,
+                    row.pressure_hpa,
                     row.source,
                     row.fetched_at,
                 )

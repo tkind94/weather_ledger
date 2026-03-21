@@ -1,10 +1,11 @@
 import type { PageServerLoad } from './$types';
 
-import { loadWeatherHistory } from '$lib/server/weather';
-
+import { loadWeatherHistory, loadMonthlyExtremes } from '$lib/server/weather';
 
 export const load: PageServerLoad = async () => {
-	return {
-		observations: await loadWeatherHistory()
-	};
+	const [observations, monthlyExtremes] = await Promise.all([
+		loadWeatherHistory(),
+		loadMonthlyExtremes()
+	]);
+	return { observations, monthlyExtremes };
 };

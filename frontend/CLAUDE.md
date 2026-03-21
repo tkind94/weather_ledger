@@ -1,8 +1,26 @@
 ## Project Configuration
 
 - **Language**: TypeScript
-- **Package Manager**: bun
+- **Package Manager**: `bun` — NEVER use `npm`, `npx`, `yarn`, or `pnpm`
 - **Add-ons**: prettier, eslint, vitest, playwright, tailwindcss, sveltekit-adapter, mcp
+
+## Commands
+
+```sh
+bun run dev          # dev server
+bun run build        # production build → build/
+bun run preview      # run built server (bun ./build/index.js), port via PORT env var
+bun run check        # svelte-check + tsc
+bun run test:unit -- --run   # vitest (non-watch)
+bun run test:e2e     # playwright (builds first; requires port 4173 free)
+```
+
+## E2E tests
+
+`playwright.config.ts` runs `global-setup.ts` before the server starts.
+`global-setup.ts` creates `/tmp/weather-ledger-test.duckdb` with seed data and sets
+`process.env.WEATHER_LEDGER_DB_PATH`. The preview server is started with `PORT=4173`.
+Do not skip globalSetup or point tests at the production DB.
 
 ---
 

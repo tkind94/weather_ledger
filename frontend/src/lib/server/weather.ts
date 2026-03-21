@@ -1,90 +1,52 @@
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 
-import type { WeatherObservation } from '$lib/weather';
-
+import type { MonthlyExtremeRow, WeatherObservation } from '$lib/weather';
 
 const require = createRequire(import.meta.url);
 const duckdb = require('duckdb') as typeof import('duckdb');
 
-const databasePath = process.env.WEATHER_LEDGER_DB_PATH ?? resolve(process.cwd(), '../database/weather.duckdb');
-const databaseOptions = { access_mode: 'READ_ONLY' };
-const rawWeatherQuery = `
+const databasePath =
+	process.env.WEATHER_LEDGER_DB_PATH ?? resolve(process.cwd(), '../database/weather.duckdb');
+
+function query<T>(sql: string): Promise<T[]> {
+	return new Promise((resolve, reject) => {
+		const db = new duckdb.Database(databasePath, { access_mode: 'READ_ONLY' }, (openError) => {
+			if (openError) { reject(openError); return; }
+			db.all(sql, (queryError, rows) => {
+				db.close(() => {});
+				if (queryError) { reject(queryError); return; }
+				resolve(rows as T[]);
+			});
+		});
+	});
+}
+
+const weatherHistoryQuery = `
 	SELECT
 		CAST(weather_date AS VARCHAR) AS weatherDate,
 		latitude,
 		longitude,
 		timezone,
 		max_temperature_c AS maxTemperatureC,
+		min_temperature_c AS minTemperatureC,
+		avg_temperature_c AS avgTemperatureC,
 		precipitation_mm AS precipitationMm,
+		wind_speed_kph AS windSpeedKph,
+		wind_gust_kph AS windGustKph,
+		wind_direction_deg AS windDirectionDeg,
+		pressure_hpa AS pressureHpa,
 		source,
 		CAST(fetched_at AS VARCHAR) AS fetchedAt
 	FROM raw_weather
 	ORDER BY weather_date
 `;
 
+const monthlyExtremesQuery = `
+	SELECT month, latitude, longitude, monthly_max_c, monthly_min_c
+	FROM weather_monthly_extremes
+	ORDER BY month
+`;
 
-type DuckDBDatabase = InstanceType<typeof duckdb.Database>;
-
-
-function openDatabase(): Promise<DuckDBDatabase> {
-	return new Promise((resolveDatabase, rejectDatabase) => {
-		const database = new duckdb.Database(databasePath, databaseOptions, (openError) => {
-			if (openError) {
-				rejectDatabase(openError);
-				return;
-			}
-
-			resolveDatabase(database);
-		});
-	});
-}
-
-
-function runQuery(database: DuckDBDatabase, query: string): Promise<WeatherObservation[]> {
-	return new Promise((resolveRows, rejectRows) => {
-		database.all(query, (queryError, rows) => {
-			if (queryError) {
-				rejectRows(queryError);
-				return;
-			}
-
-			resolveRows(rows as WeatherObservation[]);
-		});
-	});
-}
-
-
-function closeDatabase(database: DuckDBDatabase): Promise<void> {
-	return new Promise((resolveClose, rejectClose) => {
-		database.close((closeError) => {
-			if (closeError) {
-				rejectClose(closeError);
-				return;
-			}
-
-			resolveClose();
-		});
-	});
-}
-
-
-export async function loadWeatherHistory(): Promise<WeatherObservation[]> {
-	const database = await openDatabase();
-	let queryFailed = false;
-
-	try {
-		return await runQuery(database, rawWeatherQuery);
-	} catch (error) {
-		queryFailed = true;
-		throw error;
-	} finally {
-		try {
-			await closeDatabase(database);
-		} catch (closeError) {
-			if (!queryFailed) {
-				throw closeError;
-			}
-		}
-	}
-}
+export const loadWeatherHistory = () => query<WeatherObservation>(weatherHistoryQuery);
+export const loadMonthlyExtremes = () => query<MonthlyExtremeRow>(monthlyExtremesQuery);
