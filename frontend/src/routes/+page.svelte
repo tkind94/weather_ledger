@@ -9,130 +9,63 @@
 <script lang="ts">
 	import WeatherHistoryChart from '$lib/components/WeatherHistoryChart.svelte';
 
-	import type { WeatherObservation } from '$lib/weather';
+	import type { WeatherObservation, DashboardSummary } from '$lib/weather';
 
-	let { data }: { data: { observations: WeatherObservation[]; monthlyExtremes: { monthly_max_c: number }[] } } = $props();
+	let { data }: { data: { observations: WeatherObservation[]; summary: DashboardSummary | null } } =
+		$props();
 
 	let observations = $derived(data.observations);
-	let monthlyExtremes = $derived(data.monthlyExtremes);
-	let observationCount = $derived(observations.length);
-	let totalPrecipitation = $derived(
-		observations.reduce((total, observation) => total + observation.precipitationMm, 0)
-	);
-	let averageHigh = $derived(
-		observationCount
-			? observations.reduce((total, observation) => total + observation.maxTemperatureC, 0) /
-					observationCount
-			: 0
-	);
-	let hottestDay = $derived(
-		observationCount
-			? observations.reduce((current, observation) =>
-					observation.maxTemperatureC > current.maxTemperatureC ? observation : current
-				)
-			: null
-	);
-	let wettestDay = $derived(
-		observationCount
-			? observations.reduce((current, observation) =>
-					observation.precipitationMm > current.precipitationMm ? observation : current
-				)
-			: null
-	);
+	let summary = $derived(data.summary);
 </script>
 
 <section class="shell">
 	<div class="hero">
 		<p class="eyebrow">Weather Ledger</p>
 		<h1>Fort Collins weather history, stored locally.</h1>
-		<p class="lede">
-			A proof of concept that ingests Open-Meteo observations into DuckDB, exposes them through
-			SvelteKit server loads, and renders the result with Apache ECharts.
-		</p>
 		<div class="hero-meta">
 			<span>40.5852 N, 105.0844 W</span>
-			<span>{observationCount} daily observations loaded</span>
-			<span>Source: Open-Meteo Historical API</span>
+			<span>{observations.length} daily observations</span>
+			<span>Source: Open-Meteo</span>
 		</div>
 	</div>
 
 	<div class="metrics">
 		<article class="metric-card">
 			<p>Total precipitation</p>
-			<strong>{totalPrecipitation.toFixed(1)} mm</strong>
-			<span>Across the most recent 7 complete days</span>
+			<strong>{summary?.totalPrecipitationMm.toFixed(1) ?? '—'} mm</strong>
 		</article>
 		<article class="metric-card">
-			<p>Average daily high</p>
-			<strong>{averageHigh.toFixed(1)} C</strong>
-			<span>Seven-day rolling baseline for the POC</span>
+			<p>Average high</p>
+			<strong>{summary?.avgHighC.toFixed(1) ?? '—'} C</strong>
 		</article>
-
 		<article class="metric-card">
-			<p>Monthly hottest (sample)</p>
-			<strong>{monthlyExtremes.length ? `${monthlyExtremes[monthlyExtremes.length - 1].monthly_max_c.toFixed(1)} C` : '—'}</strong>
-			<span>Latest month max temperature from dbt mart</span>
+			<p>Monthly high</p>
+			<strong>{summary?.monthlyHighC?.toFixed(1) ?? '—'} C</strong>
 		</article>
 		<article class="metric-card">
 			<p>Wettest day</p>
-			<strong>{wettestDay ? wettestDay.weatherDate : 'Pending'}</strong>
-			<span>{wettestDay ? `${wettestDay.precipitationMm.toFixed(1)} mm` : 'Run the fetch job'}</span>
+			<strong>{summary?.wettestDate ?? '—'}</strong>
+			<span>{summary?.wettestPrecipitationMm ? `${summary.wettestPrecipitationMm.toFixed(1)} mm` : ''}</span>
 		</article>
 	</div>
 
-	{#if observationCount > 0}
-		<div class="insight-grid">
-			<section class="panel chart-panel">
-				<div class="panel-heading">
-					<div>
-						<p class="panel-kicker">Trend</p>
-						<h2>Precipitation versus max temperature</h2>
-					</div>
-					<p>Bar and line chart from the raw DuckDB table.</p>
+	{#if observations.length > 0}
+		<section class="panel chart-panel">
+			<div class="panel-heading">
+				<div>
+					<p class="panel-kicker">Trend</p>
+					<h2>Precipitation versus max temperature</h2>
 				</div>
-				<WeatherHistoryChart observations={observations} />
-			</section>
-
-			<section class="panel sidebar-panel">
-				<div class="panel-heading">
-					<div>
-						<p class="panel-kicker">Snapshot</p>
-						<h2>Current v0 shape</h2>
-					</div>
-				</div>
-
-				<dl class="facts">
-					<div>
-						<dt>Hottest day</dt>
-						<dd>{hottestDay?.weatherDate}</dd>
-						<small>{hottestDay?.maxTemperatureC.toFixed(1)} C</small>
-					</div>
-					<div>
-						<dt>Timezone</dt>
-						<dd>{observations[0].timezone}</dd>
-						<small>Stored with every observation</small>
-					</div>
-					<div>
-						<dt>Database path</dt>
-						<dd>../database/weather.duckdb</dd>
-						<small>Shared by frontend, Python, and dbt</small>
-					</div>
-					<div>
-						<dt>Last fetch</dt>
-						<dd>{observations[observations.length - 1].fetchedAt}</dd>
-						<small>Upserted by the scheduled pipeline</small>
-					</div>
-				</dl>
-			</section>
-		</div>
+			</div>
+			<WeatherHistoryChart observations={observations} />
+		</section>
 
 		<section class="panel table-panel">
 			<div class="panel-heading">
 				<div>
-					<p class="panel-kicker">Raw table</p>
-					<h2>`raw_weather` preview</h2>
+					<p class="panel-kicker">History</p>
+					<h2>Daily observations</h2>
 				</div>
-				<p>These rows are loaded server-side from DuckDB on each request.</p>
 			</div>
 
 			<div class="table-wrap">
@@ -142,7 +75,6 @@
 							<th>Date</th>
 							<th>Max temp</th>
 							<th>Precipitation</th>
-							<th>Source</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -151,7 +83,6 @@
 								<td>{observation.weatherDate}</td>
 								<td>{observation.maxTemperatureC.toFixed(1)} C</td>
 								<td>{observation.precipitationMm.toFixed(1)} mm</td>
-								<td>{observation.source}</td>
 							</tr>
 						{/each}
 					</tbody>
@@ -161,7 +92,7 @@
 	{:else}
 		<section class="panel empty-state">
 			<h2>No observations loaded yet.</h2>
-			<p>Run `uv run python fetch.py` in `data-pipeline` to seed the DuckDB file.</p>
+			<p>Weather data has not been loaded yet.</p>
 		</section>
 	{/if}
 </section>
@@ -209,14 +140,6 @@
 		line-height: 0.98;
 	}
 
-	.lede {
-		max-width: 44rem;
-		margin: 1rem 0 0;
-		font-size: 1.05rem;
-		line-height: 1.7;
-		color: #425466;
-	}
-
 	.hero-meta {
 		display: flex;
 		flex-wrap: wrap;
@@ -232,15 +155,11 @@
 		font-size: 0.92rem;
 	}
 
-	.metrics,
-	.insight-grid {
+	.metrics {
 		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
 		gap: 1rem;
 		margin-top: 1.25rem;
-	}
-
-	.metrics {
-		grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
 	}
 
 	.metric-card,
@@ -259,8 +178,6 @@
 	.metric-card p,
 		.metric-card span,
 		.panel-heading p,
-		.facts dt,
-		.facts small,
 		table {
 		color: #425466;
 	}
@@ -271,10 +188,6 @@
 		font-size: 2rem;
 		line-height: 1.1;
 		color: #102033;
-	}
-
-	.insight-grid {
-		grid-template-columns: minmax(0, 2.1fr) minmax(18rem, 1fr);
 	}
 
 	.panel {
@@ -289,31 +202,7 @@
 		margin-bottom: 1rem;
 	}
 
-	.facts {
-		display: grid;
-		gap: 0.9rem;
-		margin: 0;
-	}
-
-	.facts div {
-		padding: 1rem;
-		border-radius: 1rem;
-		background: rgba(245, 241, 232, 0.7);
-	}
-
-	.facts dt {
-		font-size: 0.82rem;
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-	}
-
-	.facts dd {
-		margin: 0.3rem 0 0;
-		font-weight: 700;
-		font-size: 1.05rem;
-		color: #102033;
-	}
-
+	.chart-panel,
 	.table-panel {
 		margin-top: 1.25rem;
 	}
@@ -346,10 +235,6 @@
 	}
 
 	@media (max-width: 900px) {
-		.insight-grid {
-			grid-template-columns: 1fr;
-		}
-
 		.panel-heading {
 			flex-direction: column;
 			align-items: start;

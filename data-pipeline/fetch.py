@@ -162,10 +162,9 @@ def fetch_history() -> list[WeatherDay]:
 
 
 def ensure_schema(connection: duckdb.DuckDBPyConnection) -> None:
-    connection.execute("DROP TABLE IF EXISTS raw_weather")
     connection.execute(
         """
-		CREATE TABLE raw_weather (
+		CREATE TABLE IF NOT EXISTS raw_weather (
 			weather_date DATE PRIMARY KEY,
 			latitude DOUBLE NOT NULL,
 			longitude DOUBLE NOT NULL,
@@ -191,7 +190,7 @@ def store_history(rows: list[WeatherDay]) -> None:
         ensure_schema(connection)
         connection.executemany(
             """
-		INSERT INTO raw_weather (
+		INSERT OR REPLACE INTO raw_weather (
 			weather_date,
 			latitude,
 			longitude,

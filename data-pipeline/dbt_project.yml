@@ -18,7 +18,5 @@ clean-targets:
 
 models:
   weather_transform:
-    staging:
-      +materialized: view
     marts:
       +materialized: table

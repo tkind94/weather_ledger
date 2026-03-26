@@ -25,7 +25,7 @@ function runSql(db: DB, sql: string): Promise<void> {
 }
 
 function closeDb(db: DB): Promise<void> {
-	return new Promise((resolve) => db.close(resolve));
+	return new Promise((resolve) => db.close(() => resolve()));
 }
 
 export default async function globalSetup(): Promise<void> {
@@ -64,18 +64,19 @@ export default async function globalSetup(): Promise<void> {
 	`);
 
 	await runSql(db, `
-		CREATE TABLE weather_monthly_extremes (
-			month DATE NOT NULL,
-			latitude DOUBLE NOT NULL,
-			longitude DOUBLE NOT NULL,
-			monthly_max_c DOUBLE NOT NULL,
-			monthly_min_c DOUBLE NOT NULL
+		CREATE TABLE dashboard_summary (
+			observation_count BIGINT NOT NULL,
+			total_precipitation_mm DOUBLE NOT NULL,
+			avg_high_c DOUBLE NOT NULL,
+			wettest_date DATE,
+			wettest_precipitation_mm DOUBLE,
+			monthly_high_c DOUBLE
 		)
 	`);
 
 	await runSql(db, `
-		INSERT INTO weather_monthly_extremes VALUES
-			('2026-03-01', 40.5852, -105.0844, 15.2, 1.4)
+		INSERT INTO dashboard_summary VALUES
+			(2, 2.3, 14.0, '2026-03-14', 2.3, 15.2)
 	`);
 
 	await closeDb(db);

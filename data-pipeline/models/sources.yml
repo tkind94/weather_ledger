@@ -10,8 +10,8 @@ sources:
         description: Daily precipitation and maximum temperature values for Fort Collins, Colorado.
 
 models:
-  - name: stg_raw_weather
-    description: Typed staging model over the raw weather source.
+  - name: weather_monthly_extremes
+    description: Monthly max/min temperatures by location.
 
-  - name: fct_weather_history
-    description: Ordered fact table used by the frontend proof of concept.
+  - name: dashboard_summary
+    description: Pre-computed metrics for the frontend dashboard.

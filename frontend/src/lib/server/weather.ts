@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 
-import type { MonthlyExtremeRow, WeatherObservation } from '$lib/weather';
+import type { DashboardSummary, WeatherObservation } from '$lib/weather';
 
 const require = createRequire(import.meta.url);
 const duckdb = require('duckdb') as typeof import('duckdb');
@@ -9,44 +9,58 @@ const duckdb = require('duckdb') as typeof import('duckdb');
 const databasePath =
 	process.env.WEATHER_LEDGER_DB_PATH ?? resolve(process.cwd(), '../database/weather.duckdb');
 
-function query<T>(sql: string): Promise<T[]> {
+type DB = InstanceType<typeof duckdb.Database>;
+
+function openDatabase(): Promise<DB> {
 	return new Promise((resolve, reject) => {
-		const db = new duckdb.Database(databasePath, { access_mode: 'READ_ONLY' }, (openError) => {
-			if (openError) { reject(openError); return; }
-			db.all(sql, (queryError, rows) => {
-				db.close(() => {});
-				if (queryError) { reject(queryError); return; }
-				resolve(rows as T[]);
-			});
+		const db = new duckdb.Database(databasePath, { access_mode: 'READ_ONLY' }, (err) => {
+			if (err) reject(err);
+			else resolve(db);
 		});
 	});
 }
 
-const weatherHistoryQuery = `
+function queryAll<T>(db: DB, sql: string): Promise<T[]> {
+	return new Promise((resolve, reject) => {
+		db.all(sql, (err, rows) => {
+			if (err) reject(err);
+			else resolve(rows as T[]);
+		});
+	});
+}
+
+const observationsQuery = `
 	SELECT
 		CAST(weather_date AS VARCHAR) AS weatherDate,
-		latitude,
-		longitude,
-		timezone,
 		max_temperature_c AS maxTemperatureC,
-		min_temperature_c AS minTemperatureC,
-		avg_temperature_c AS avgTemperatureC,
-		precipitation_mm AS precipitationMm,
-		wind_speed_kph AS windSpeedKph,
-		wind_gust_kph AS windGustKph,
-		wind_direction_deg AS windDirectionDeg,
-		pressure_hpa AS pressureHpa,
-		source,
-		CAST(fetched_at AS VARCHAR) AS fetchedAt
+		precipitation_mm AS precipitationMm
 	FROM raw_weather
 	ORDER BY weather_date
 `;
 
-const monthlyExtremesQuery = `
-	SELECT month, latitude, longitude, monthly_max_c, monthly_min_c
-	FROM weather_monthly_extremes
-	ORDER BY month
+const summaryQuery = `
+	SELECT
+		observation_count AS observationCount,
+		total_precipitation_mm AS totalPrecipitationMm,
+		avg_high_c AS avgHighC,
+		CAST(wettest_date AS VARCHAR) AS wettestDate,
+		wettest_precipitation_mm AS wettestPrecipitationMm,
+		monthly_high_c AS monthlyHighC
+	FROM dashboard_summary
 `;
 
-export const loadWeatherHistory = () => query<WeatherObservation>(weatherHistoryQuery);
-export const loadMonthlyExtremes = () => query<MonthlyExtremeRow>(monthlyExtremesQuery);
+export async function loadDashboard(): Promise<{
+	observations: WeatherObservation[];
+	summary: DashboardSummary | null;
+}> {
+	const db = await openDatabase();
+	try {
+		const [observations, summaryRows] = await Promise.all([
+			queryAll<WeatherObservation>(db, observationsQuery),
+			queryAll<DashboardSummary>(db, summaryQuery)
+		]);
+		return { observations, summary: summaryRows[0] ?? null };
+	} finally {
+		db.close(() => {});
+	}
+}

@@ -2,15 +2,6 @@
 
 Weather Ledger is a local-first weather history app for Fort Collins, Colorado. It ingests daily observations from Open-Meteo into a shared DuckDB file, transforms them with dbt, and serves a SvelteKit dashboard over that data.
 
-## What To Read First
-
-If you are new to the repo, start here:
-
-1. This file for setup and validation.
-2. `ARCHITECTURE.md` for the system design and intended direction.
-3. `DEVELOPMENT.md` for day-to-day commands and troubleshooting.
-4. `data-pipeline/models/README.md` for the current data model.
-
 ## Project Layout
 
 - `data-pipeline/`: Python ingestion script, dbt project, and cron container.
@@ -84,9 +75,9 @@ The most useful validation sequence is:
 What success looks like:
 
 - `data-pipeline/fetch.py` creates or updates `database/weather.duckdb`
-- dbt builds `stg_raw_weather` and `fct_weather_history`
+- dbt builds `weather_monthly_extremes` and `dashboard_summary`
 - SvelteKit typecheck and tests pass
-- the page shows 7 weather observations and the `raw_weather` preview table
+- the page shows weather observations, metrics, and the daily observations table
 
 ## Generated Files
 
@@ -114,16 +105,8 @@ Use this to clear them:
 - `data-pipeline/.dbt/profiles.yml`: local dbt profile for the shared database
 - `frontend/src/lib/server/weather.ts`: server-only DuckDB query helper
 - `frontend/src/routes/+page.server.ts`: page load function
-- `frontend/src/routes/+page.svelte`: dashboard proof of concept
+- `frontend/src/routes/+page.svelte`: weather dashboard
 
-## Project Governance
+## CI
 
-- `CONTRIBUTING.md` describes the expected local workflow.
-- `.github/workflows/ci.yml` runs the same core checks in CI.
-- `LICENSE` is MIT.
-
-## About AI Workflow And Skills
-
-`AI_WORKFLOW.md` is for agent workflow and repository conventions. It is not the main onboarding document.
-
-No optional AI skill installation is required for local development or validation.
+`.github/workflows/ci.yml` runs the same core checks as `./scripts/validate.sh`.

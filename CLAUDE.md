@@ -43,6 +43,41 @@ runs on port 4173 via `PORT=4173` in `playwright.config.ts`.
 - `DBT_DUCKDB_PATH` — overrides the DuckDB path for dbt
 - `PORT` — controls the adapter-node listen port (default 3000; e2e tests use 4173)
 
+## Architecture rules
+
+### Data flow
+
+```
+Open-Meteo API → fetch.py → raw_weather (DuckDB)
+                                ↓
+              weather_monthly_extremes   dashboard_summary (dbt tables)
+                                              ↓
+                                    SvelteKit server load → page
+```
+
+- `fetch.py` **upserts** (INSERT OR REPLACE). It never drops or recreates tables.
+  History accumulates across runs — this is a ledger.
+- `fetch.py` owns the schema (`CREATE TABLE IF NOT EXISTS`). Types are enforced at
+  the boundary — no staging view needed.
+- All aggregation and transformation happens in **dbt models**, not in the frontend.
+  The Svelte page is purely presentational — no `.reduce()`, no client-side computation.
+- The frontend opens **one DuckDB connection per request** and runs both queries against it.
+
+### What goes where
+
+| Concern | Where | NOT here |
+|---------|-------|----------|
+| Aggregation (sum, avg, max) | dbt model | Svelte `$derived`, JS `.reduce()` |
+| Type casting | `fetch.py` (`CREATE TABLE`) | Column types enforced at ingestion |
+| Display formatting (`.toFixed`) | Svelte template | dbt SQL |
+| camelCase aliasing | frontend SQL query | dbt model column names |
+
+### Frontend types
+
+- Types in `$lib/weather.ts` must match what the SQL query returns — no extra fields.
+- All types use **camelCase**. The SQL query aliases handle `snake_case` → `camelCase`.
+- Query only the columns the UI renders. Do not `SELECT *`.
+
 ## Project structure
 
 ```
