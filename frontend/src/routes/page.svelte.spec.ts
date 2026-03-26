@@ -11,17 +11,17 @@ describe('/+page.svelte', () => {
 				observations: [
 					{
 						weatherDate: '2026-03-01',
-						maxTemperatureC: 17.8,
-						precipitationMm: 0
+						maxTemperature: 17.8,
+						precipitation: 0
 					}
 				],
 				summary: {
 					observationCount: 1,
-					totalPrecipitationMm: 0,
-					avgHighC: 17.8,
+					totalPrecipitation: 0,
+					avgHigh: 17.8,
 					wettestDate: '2026-03-01',
-					wettestPrecipitationMm: 0,
-					monthlyHighC: 17.8
+					wettestPrecipitation: 0,
+					monthlyHigh: 17.8
 				}
 			}
 		});

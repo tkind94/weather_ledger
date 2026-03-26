@@ -10,6 +10,7 @@
 	import WeatherHistoryChart from '$lib/components/WeatherHistoryChart.svelte';
 
 	import type { WeatherObservation, DashboardSummary } from '$lib/weather';
+	import { unitSystem, fmt } from '$lib/stores/units';
 
 	let { data }: { data: { observations: WeatherObservation[]; summary: DashboardSummary | null } } =
 		$props();
@@ -26,26 +27,30 @@
 			<span>40.5852 N, 105.0844 W</span>
 			<span>{observations.length} daily observations</span>
 			<span>Source: Open-Meteo</span>
+			<span class="unit-toggle">
+				<button class:active={$unitSystem === 'metric'} on:click={() => unitSystem.set('metric')}>Metric</button>
+				<button class:active={$unitSystem === 'imperial'} on:click={() => unitSystem.set('imperial')}>Imperial</button>
+			</span>
 		</div>
 	</div>
 
 	<div class="metrics">
 		<article class="metric-card">
 			<p>Total precipitation</p>
-			<strong>{summary?.totalPrecipitationMm.toFixed(1) ?? '—'} mm</strong>
+			<strong>{summary ? fmt.precip(summary.totalPrecipitation, $unitSystem) : '—'}</strong>
 		</article>
 		<article class="metric-card">
 			<p>Average high</p>
-			<strong>{summary?.avgHighC.toFixed(1) ?? '—'} C</strong>
+			<strong>{summary ? fmt.temp(summary.avgHigh, $unitSystem) : '—'}</strong>
 		</article>
 		<article class="metric-card">
 			<p>Monthly high</p>
-			<strong>{summary?.monthlyHighC?.toFixed(1) ?? '—'} C</strong>
+			<strong>{summary?.monthlyHigh != null ? fmt.temp(summary.monthlyHigh, $unitSystem) : '—'}</strong>
 		</article>
 		<article class="metric-card">
 			<p>Wettest day</p>
 			<strong>{summary?.wettestDate ?? '—'}</strong>
-			<span>{summary?.wettestPrecipitationMm ? `${summary.wettestPrecipitationMm.toFixed(1)} mm` : ''}</span>
+			<span>{summary?.wettestPrecipitation != null ? fmt.precip(summary.wettestPrecipitation, $unitSystem) : ''}</span>
 		</article>
 	</div>
 
@@ -57,7 +62,7 @@
 					<h2>Precipitation versus max temperature</h2>
 				</div>
 			</div>
-			<WeatherHistoryChart observations={observations} />
+				<WeatherHistoryChart {observations} unitSystem={$unitSystem} />
 		</section>
 
 		<section class="panel table-panel">
@@ -81,8 +86,8 @@
 						{#each observations as observation (observation.weatherDate)}
 							<tr>
 								<td>{observation.weatherDate}</td>
-								<td>{observation.maxTemperatureC.toFixed(1)} C</td>
-								<td>{observation.precipitationMm.toFixed(1)} mm</td>
+								<td>{fmt.temp(observation.maxTemperature, $unitSystem)}</td>
+								<td>{fmt.precip(observation.precipitation, $unitSystem)}</td>
 							</tr>
 						{/each}
 					</tbody>

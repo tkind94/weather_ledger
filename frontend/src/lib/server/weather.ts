@@ -32,8 +32,8 @@ function queryAll<T>(db: DB, sql: string): Promise<T[]> {
 const observationsQuery = `
 	SELECT
 		CAST(weather_date AS VARCHAR) AS weatherDate,
-		max_temperature_c AS maxTemperatureC,
-		precipitation_mm AS precipitationMm
+		max_temperature_c AS maxTemperature,
+		precipitation_mm AS precipitation
 	FROM raw_weather
 	ORDER BY weather_date
 `;
@@ -41,11 +41,11 @@ const observationsQuery = `
 const summaryQuery = `
 	SELECT
 		observation_count AS observationCount,
-		total_precipitation_mm AS totalPrecipitationMm,
-		avg_high_c AS avgHighC,
+		total_precipitation_mm AS totalPrecipitation,
+		avg_high_c AS avgHigh,
 		CAST(wettest_date AS VARCHAR) AS wettestDate,
-		wettest_precipitation_mm AS wettestPrecipitationMm,
-		monthly_high_c AS monthlyHighC
+		wettest_precipitation_mm AS wettestPrecipitation,
+		monthly_high_c AS monthlyHigh
 	FROM dashboard_summary
 `;
 
