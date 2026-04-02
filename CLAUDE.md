@@ -84,7 +84,6 @@ Open-Meteo API → fetch.py → raw_weather (DuckDB)
 data-pipeline/   Python ingestion + dbt transformation
 frontend/        SvelteKit app (Bun + TypeScript)
 database/        Shared weather.duckdb (gitignored)
-scripts/         validate.sh, clean.sh, setup-local.sh
 docker-compose.yml
 ```
 

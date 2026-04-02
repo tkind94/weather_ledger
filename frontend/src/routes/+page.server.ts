@@ -1,5 +1,12 @@
 import type { PageServerLoad } from './$types';
 
-import { loadDashboard } from '$lib/server/weather';
+import { ensureDefaultLocationData } from '$lib/server/location-pipeline';
+import { hasCachedLocations, loadDashboard } from '$lib/server/weather';
 
-export const load: PageServerLoad = () => loadDashboard();
+export const load: PageServerLoad = async ({ url }) => {
+	if (!(await hasCachedLocations())) {
+		await ensureDefaultLocationData();
+	}
+
+	return loadDashboard(url.searchParams.get('location'));
+};

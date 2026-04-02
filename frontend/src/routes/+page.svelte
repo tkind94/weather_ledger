@@ -1,37 +1,263 @@
+<script lang="ts">
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+
+	import LocationSearchPanel from '$lib/components/LocationSearchPanel.svelte';
+	import LocationPickerMap from '$lib/components/LocationPickerMap.svelte';
+	import WeatherHistoryChart from '$lib/components/WeatherHistoryChart.svelte';
+
+	import { coordinateLabel, type DashboardPageData, type KnownLocation } from '$lib/weather';
+	import { unitSystem, fmt } from '$lib/stores/units';
+
+	type SearchResponse = {
+		locations: KnownLocation[];
+	};
+
+	type EnsureResponse = {
+		location: {
+			locationKey: string;
+			canonicalName: string;
+			rowsStored: number;
+			existingLocation: boolean;
+		};
+	};
+
+	type ApiErrorResponse = {
+		message: string;
+		partialSuccess: boolean;
+	};
+
+	let { data }: { data: DashboardPageData } = $props();
+
+	let selectedLocation = $derived(data.selectedLocation);
+	let observations = $derived(data.observations);
+	let summary = $derived(data.summary);
+	let locationCount = $derived(data.locationCount);
+
+	let searchInput = $state<string | null>(null);
+	let searchQuery = $derived(searchInput ?? selectedLocation?.canonicalName ?? '');
+	let searchResults = $state<KnownLocation[]>([]);
+	let searchBusy = $state(false);
+	let loadingLocation = $state(false);
+	let statusMessage = $state<string | null>(null);
+	let searchController: AbortController | null = null;
+
+	async function readErrorResponse(response: Response): Promise<ApiErrorResponse> {
+		const fallbackMessage = response.statusText || 'Request failed';
+
+		try {
+			const payload = await response.json();
+			if (
+				typeof payload === 'object' &&
+				payload !== null &&
+				'message' in payload &&
+				typeof payload.message === 'string'
+			) {
+				return {
+					message: payload.message,
+					partialSuccess: 'partialSuccess' in payload && payload.partialSuccess === true
+				};
+			}
+		} catch {
+			// Fall through to default
+		}
+
+		return { message: fallbackMessage, partialSuccess: false };
+	}
+
+	async function selectKnownLocation(location: KnownLocation): Promise<void> {
+		searchController?.abort();
+		statusMessage = null;
+		searchInput = location.canonicalName;
+		searchResults = [];
+		let locationHref = resolve('/');
+		locationHref += `?location=${encodeURIComponent(location.locationKey)}`;
+		try {
+			await goto(locationHref);
+		} finally {
+			searchInput = null;
+		}
+	}
+
+	async function submitSearch(event: SubmitEvent): Promise<void> {
+		event.preventDefault();
+		if (searchResults[0]) {
+			await selectKnownLocation(searchResults[0]);
+		}
+	}
+
+	async function handleMapPick(coordinates: {
+		latitude: number;
+		longitude: number;
+	}): Promise<void> {
+		loadingLocation = true;
+		statusMessage = 'Fetching weather data and rebuilding dbt models for the selected location...';
+
+		try {
+			const response = await fetch('/api/locations', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify(coordinates)
+			});
+
+			if (!response.ok) {
+				const failure = await readErrorResponse(response);
+				if (failure.partialSuccess) {
+					searchResults = [];
+					statusMessage = failure.message;
+					return;
+				}
+
+				throw new Error(failure.message);
+			}
+
+			const payload = (await response.json()) as EnsureResponse;
+			statusMessage =
+				payload.location.rowsStored > 0
+					? `Cached ${payload.location.rowsStored} new daily observations for ${payload.location.canonicalName}.`
+					: `${payload.location.canonicalName} is already up to date.`;
+			searchResults = [];
+			searchInput = payload.location.canonicalName;
+			let locationHref = resolve('/');
+			locationHref += `?location=${encodeURIComponent(payload.location.locationKey)}`;
+			try {
+				await goto(locationHref, { invalidateAll: true });
+			} finally {
+				searchInput = null;
+			}
+		} catch (error) {
+			statusMessage =
+				error instanceof Error ? error.message : 'Unable to load that location right now.';
+		} finally {
+			loadingLocation = false;
+		}
+	}
+
+	function resetSearchResults(): void {
+		searchController?.abort();
+		searchController = null;
+		searchResults = [];
+		searchBusy = false;
+	}
+
+	async function requestSearchResults(query: string): Promise<void> {
+		searchController?.abort();
+		const controller = new AbortController();
+		searchController = controller;
+		searchBusy = true;
+
+		try {
+			const response = await fetch(`/api/locations?q=${encodeURIComponent(query)}`, {
+				signal: controller.signal
+			});
+
+			if (!response.ok) {
+				const failure = await readErrorResponse(response);
+				throw new Error(failure.message);
+			}
+
+			const payload = (await response.json()) as SearchResponse;
+			searchResults = payload.locations;
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
+				return;
+			}
+
+			searchResults = [];
+			statusMessage = error instanceof Error ? error.message : 'Unable to search cached locations.';
+		} finally {
+			if (searchController === controller) {
+				searchController = null;
+				searchBusy = false;
+			}
+		}
+	}
+
+	function handleSearchInput(event: Event): void {
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLInputElement)) {
+			return;
+		}
+
+		searchInput = target.value;
+		statusMessage = null;
+		const normalized = target.value.trim();
+		if (normalized.length < 2 || normalized === selectedLocation?.canonicalName) {
+			resetSearchResults();
+			return;
+		}
+
+		void requestSearchResults(normalized);
+	}
+</script>
+
 <svelte:head>
 	<title>Weather Ledger</title>
 	<meta
 		name="description"
-		content="Local-first weather history for Fort Collins, Colorado powered by SvelteKit, DuckDB, and Open-Meteo."
+		content="Local-first weather history for cached and on-demand locations powered by SvelteKit, DuckDB, dbt, and Open-Meteo."
 	/>
 </svelte:head>
 
-<script lang="ts">
-	import WeatherHistoryChart from '$lib/components/WeatherHistoryChart.svelte';
-
-	import type { WeatherObservation, DashboardSummary } from '$lib/weather';
-	import { unitSystem, fmt } from '$lib/stores/units';
-
-	let { data }: { data: { observations: WeatherObservation[]; summary: DashboardSummary | null } } =
-		$props();
-
-	let observations = $derived(data.observations);
-	let summary = $derived(data.summary);
-</script>
-
 <section class="shell">
 	<div class="hero">
-		<p class="eyebrow">Weather Ledger</p>
-		<h1>Fort Collins weather history, stored locally.</h1>
+		<div>
+			<p class="eyebrow">Weather Ledger</p>
+			<h1>
+				{selectedLocation
+					? selectedLocation.canonicalName
+					: 'Pick a place and build its local weather ledger.'}
+			</h1>
+			<p class="hero-copy">
+				Search only the locations you have already cached, or click the map to ingest a new one on
+				demand. Every new location is stored locally in DuckDB and rebuilt through dbt before the
+				dashboard refreshes.
+			</p>
+		</div>
 		<div class="hero-meta">
-			<span>40.5852 N, 105.0844 W</span>
-			<span>{observations.length} daily observations</span>
-			<span>Source: Open-Meteo</span>
+			<span>{locationCount} cached {locationCount === 1 ? 'location' : 'locations'}</span>
+			{#if selectedLocation}
+				<span>{coordinateLabel(selectedLocation.latitude, selectedLocation.longitude)}</span>
+				<span>{selectedLocation.observationCount} daily observations</span>
+				<span>{selectedLocation.timezone}</span>
+			{/if}
+			<span>Source: Open-Meteo + dbt</span>
 			<span class="unit-toggle">
-				<button class:active={$unitSystem === 'metric'} on:click={() => unitSystem.set('metric')}>Metric</button>
-				<button class:active={$unitSystem === 'imperial'} on:click={() => unitSystem.set('imperial')}>Imperial</button>
+				<button
+					type="button"
+					class:active={$unitSystem === 'metric'}
+					onclick={() => unitSystem.set('metric')}>Metric</button
+				>
+				<button
+					type="button"
+					class:active={$unitSystem === 'imperial'}
+					onclick={() => unitSystem.set('imperial')}>Imperial</button
+				>
 			</span>
 		</div>
+	</div>
+
+	<div class="control-grid">
+		<LocationSearchPanel
+			{selectedLocation}
+			{searchQuery}
+			{searchResults}
+			{searchBusy}
+			{statusMessage}
+			onSearchInput={handleSearchInput}
+			onSearchSubmit={submitSearch}
+			onSelectLocation={selectKnownLocation}
+		/>
+
+		<section class="panel map-panel">
+			<div class="panel-heading">
+				<div>
+					<p class="panel-kicker">Explore</p>
+					<h2>Click the map for a new location</h2>
+				</div>
+			</div>
+			<LocationPickerMap {selectedLocation} onPick={handleMapPick} disabled={loadingLocation} />
+		</section>
 	</div>
 
 	<div class="metrics">
@@ -44,32 +270,38 @@
 			<strong>{summary ? fmt.temp(summary.avgHigh, $unitSystem) : '—'}</strong>
 		</article>
 		<article class="metric-card">
-			<p>Monthly high</p>
-			<strong>{summary?.monthlyHigh != null ? fmt.temp(summary.monthlyHigh, $unitSystem) : '—'}</strong>
+			<p>Latest monthly high</p>
+			<strong
+				>{summary?.monthlyHigh != null ? fmt.temp(summary.monthlyHigh, $unitSystem) : '—'}</strong
+			>
 		</article>
 		<article class="metric-card">
 			<p>Wettest day</p>
 			<strong>{summary?.wettestDate ?? '—'}</strong>
-			<span>{summary?.wettestPrecipitation != null ? fmt.precip(summary.wettestPrecipitation, $unitSystem) : ''}</span>
+			<span
+				>{summary?.wettestPrecipitation != null
+					? fmt.precip(summary.wettestPrecipitation, $unitSystem)
+					: ''}</span
+			>
 		</article>
 	</div>
 
-	{#if observations.length > 0}
+	{#if selectedLocation && observations.length > 0}
 		<section class="panel chart-panel">
 			<div class="panel-heading">
 				<div>
 					<p class="panel-kicker">Trend</p>
-					<h2>Precipitation versus max temperature</h2>
+					<h2>{selectedLocation.canonicalName} precipitation versus max temperature</h2>
 				</div>
 			</div>
-				<WeatherHistoryChart {observations} unitSystem={$unitSystem} />
+			<WeatherHistoryChart {observations} unitSystem={$unitSystem} />
 		</section>
 
 		<section class="panel table-panel">
 			<div class="panel-heading">
 				<div>
 					<p class="panel-kicker">History</p>
-					<h2>Daily observations</h2>
+					<h2>Daily observations for {selectedLocation.canonicalName}</h2>
 				</div>
 			</div>
 
@@ -97,7 +329,7 @@
 	{:else}
 		<section class="panel empty-state">
 			<h2>No observations loaded yet.</h2>
-			<p>Weather data has not been loaded yet.</p>
+			<p>Choose an existing cached location or click the map to fetch one.</p>
 		</section>
 	{/if}
 </section>
@@ -110,14 +342,25 @@
 	}
 
 	.hero {
+		display: grid;
+		gap: 1.35rem;
 		padding: 2rem;
 		border: 1px solid rgba(15, 23, 32, 0.08);
 		border-radius: 1.75rem;
 		background:
-			linear-gradient(135deg, rgba(11, 114, 133, 0.14), rgba(255, 255, 255, 0.84)),
-			radial-gradient(circle at top right, rgba(217, 108, 6, 0.18), transparent 38%),
-			rgba(255, 255, 255, 0.72);
+			linear-gradient(135deg, rgba(11, 114, 133, 0.16), rgba(255, 252, 246, 0.92)),
+			radial-gradient(circle at top right, rgba(247, 103, 7, 0.2), transparent 34%),
+			radial-gradient(circle at bottom left, rgba(128, 185, 24, 0.16), transparent 28%),
+			rgba(255, 255, 255, 0.8);
 		box-shadow: 0 1.5rem 4rem rgba(15, 23, 32, 0.08);
+	}
+
+	.hero-copy {
+		margin: 1rem 0 0;
+		max-width: 52rem;
+		font-size: 1.04rem;
+		line-height: 1.65;
+		color: #314457;
 	}
 
 	.eyebrow,
@@ -160,6 +403,32 @@
 		font-size: 0.92rem;
 	}
 
+	.unit-toggle {
+		display: inline-flex;
+		gap: 0.4rem;
+	}
+
+	.unit-toggle button {
+		font: inherit;
+		padding: 0.55rem 0.95rem;
+		border-radius: 999px;
+		border: 1px solid rgba(16, 32, 51, 0.12);
+		background: rgba(255, 255, 255, 0.88);
+		color: #102033;
+	}
+
+	.unit-toggle button.active {
+		background: #102033;
+		color: #fff7ed;
+	}
+
+	.control-grid {
+		display: grid;
+		grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
+		gap: 1rem;
+		margin-top: 1.25rem;
+	}
+
 	.metrics {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
@@ -176,14 +445,18 @@
 		box-shadow: 0 1.25rem 3rem rgba(15, 23, 32, 0.06);
 	}
 
+	.map-panel {
+		align-self: start;
+	}
+
 	.metric-card {
 		padding: 1.25rem;
 	}
 
 	.metric-card p,
-		.metric-card span,
-		.panel-heading p,
-		table {
+	.metric-card span,
+	.panel-heading p,
+	table {
 		color: #425466;
 	}
 
@@ -193,6 +466,11 @@
 		font-size: 2rem;
 		line-height: 1.1;
 		color: #102033;
+	}
+
+	.metric-card span {
+		display: block;
+		margin-top: 0.35rem;
 	}
 
 	.panel {
@@ -240,6 +518,10 @@
 	}
 
 	@media (max-width: 900px) {
+		.control-grid {
+			grid-template-columns: 1fr;
+		}
+
 		.panel-heading {
 			flex-direction: column;
 			align-items: start;

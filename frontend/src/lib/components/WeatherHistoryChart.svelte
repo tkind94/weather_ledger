@@ -6,7 +6,10 @@
 	import type { UnitSystem } from '$lib/stores/units';
 	import { fmt, convertTemp, convertPrecip } from '$lib/stores/units';
 
-	let { observations, unitSystem = 'metric' }: { observations: WeatherObservation[]; unitSystem?: UnitSystem } = $props();
+	let {
+		observations,
+		unitSystem = 'metric'
+	}: { observations: WeatherObservation[]; unitSystem?: UnitSystem } = $props();
 	let chartElement: HTMLDivElement;
 	let chart: echarts.ECharts | undefined = $state();
 
@@ -20,19 +23,20 @@
 			animationEasing: 'cubicOut',
 			grid: { left: 36, right: 36, top: 24, bottom: 36 },
 			tooltip: {
-			trigger: 'axis',
-			formatter: (params: echarts.TooltipComponentFormatterCallbackParams) => {
-				if (!Array.isArray(params)) return '';
-				const date = (params[0]?.name) ?? '';
-				const lines = params.map((p) => {
-					const value = p.seriesName === 'Precipitation'
-						? fmt.precip(observations[p.dataIndex!].precipitation, unitSystem)
-						: fmt.temp(observations[p.dataIndex!].maxTemperature, unitSystem);
-					return `${p.marker} ${p.seriesName}: <strong>${value}</strong>`;
-				});
-				return `${date}<br/>${lines.join('<br/>')}`;
-			}
-		},
+				trigger: 'axis',
+				formatter: (params: echarts.TooltipComponentFormatterCallbackParams) => {
+					if (!Array.isArray(params)) return '';
+					const date = params[0]?.name ?? '';
+					const lines = params.map((p) => {
+						const value =
+							p.seriesName === 'Precipitation'
+								? fmt.precip(observations[p.dataIndex!].precipitation, unitSystem)
+								: fmt.temp(observations[p.dataIndex!].maxTemperature, unitSystem);
+						return `${p.marker} ${p.seriesName}: <strong>${value}</strong>`;
+					});
+					return `${date}<br/>${lines.join('<br/>')}`;
+				}
+			},
 			legend: {
 				bottom: 0,
 				textStyle: { color: '#213547', fontFamily: 'Avenir Next, Segoe UI, sans-serif' }

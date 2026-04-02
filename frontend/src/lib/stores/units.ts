@@ -23,7 +23,7 @@ if (typeof window !== 'undefined') {
 }
 
 export function convertTemp(c: number, system: UnitSystem): number {
-	return system === 'imperial' ? c * 9 / 5 + 32 : c;
+	return system === 'imperial' ? (c * 9) / 5 + 32 : c;
 }
 
 export function convertPrecip(mm: number, system: UnitSystem): number {
@@ -47,5 +47,5 @@ function formatPrecip(mm: number, system: UnitSystem): string {
 
 export const fmt = {
 	temp: formatTemp,
-	precip: formatPrecip,
+	precip: formatPrecip
 };

@@ -1,6 +1,6 @@
 # Weather Ledger
 
-Weather Ledger is a local-first weather history app for Fort Collins, Colorado. It ingests daily observations from Open-Meteo into a shared DuckDB file, transforms them with dbt, and serves a SvelteKit dashboard over that data.
+Weather Ledger is a local-first weather history app for cached and on-demand locations. It ingests daily observations from Open-Meteo into a shared DuckDB file, transforms them with dbt, and serves a SvelteKit dashboard with local search plus click-to-add map selection.
 
 ## Project Layout
 
@@ -33,7 +33,7 @@ Populate the database and build the first dbt models:
 
 ```sh
 cd data-pipeline && uv run python fetch.py
-cd data-pipeline && DBT_PROFILES_DIR="$PWD/.dbt" uv run dbt build
+cd data-pipeline && DBT_PROFILES_DIR="$PWD/.dbt" uv run dbt build --select weather_daily_history location_catalog weather_monthly_extremes dashboard_summary
 ```
 
 Run the frontend locally:
@@ -75,9 +75,9 @@ The most useful validation sequence is:
 What success looks like:
 
 - `data-pipeline/fetch.py` creates or updates `database/weather.duckdb`
-- dbt builds `weather_monthly_extremes` and `dashboard_summary`
+- dbt builds `weather_daily_history`, `location_catalog`, `weather_monthly_extremes`, and `dashboard_summary`
 - SvelteKit typecheck and tests pass
-- the page shows weather observations, metrics, and the daily observations table
+- the page shows a cached location search, a click-to-add map, weather observations, metrics, and the daily observations table
 
 ## Generated Files
 
@@ -101,9 +101,10 @@ Use this to clear them:
 
 ## Important Files
 
-- `data-pipeline/fetch.py`: Open-Meteo ingestion into DuckDB
+- `data-pipeline/fetch.py`: location-aware Open-Meteo ingestion into DuckDB
 - `data-pipeline/.dbt/profiles.yml`: local dbt profile for the shared database
 - `frontend/src/lib/server/weather.ts`: server-only DuckDB query helper
+- `frontend/src/lib/server/location-pipeline.ts`: on-demand fetch + dbt orchestration from the app server
 - `frontend/src/routes/+page.server.ts`: page load function
 - `frontend/src/routes/+page.svelte`: weather dashboard
 

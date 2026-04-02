@@ -2,16 +2,23 @@ version: 2
 
 sources:
   - name: weather_ledger
-    description: Raw weather observations ingested from Open-Meteo.
-    database: weather
+    description: Raw location metadata and weather observations ingested on demand.
     schema: main
     tables:
+      - name: raw_locations
+        description: Canonical location records keyed by a stable common-name slug.
       - name: raw_weather
-        description: Daily precipitation and maximum temperature values for Fort Collins, Colorado.
+        description: Daily weather observations keyed by canonical location.
 
 models:
+  - name: weather_daily_history
+    description: Location-aware daily weather history for the dashboard.
+
+  - name: location_catalog
+    description: Searchable catalog of cached locations with observation coverage.
+
   - name: weather_monthly_extremes
-    description: Monthly max/min temperatures by location.
+    description: Monthly max/min temperatures grouped by canonical location.
 
   - name: dashboard_summary
-    description: Pre-computed metrics for the frontend dashboard.
+    description: Pre-computed dashboard metrics for each canonical location.

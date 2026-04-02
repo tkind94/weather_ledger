@@ -1,0 +1,60 @@
+# Pre-commit hooks for Weather Ledger
+# Install with: prek install
+# Run manually with: prek run --all-files
+
+[[repos]]
+repo = "builtin"
+hooks = [
+    { id = "trailing-whitespace" },
+    { id = "end-of-file-fixer" },
+    { id = "check-merge-conflict" },
+    { id = "check-added-large-files", args = ["--maxkb=500"] },
+]
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "fmt-frontend"
+name = "prettier (write)"
+language = "system"
+entry = "just fmt-frontend"
+pass_filenames = false
+always_run = true
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "fmt-python"
+name = "ruff format (write)"
+language = "system"
+entry = "just fmt-python"
+pass_filenames = false
+always_run = true
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "lint-python"
+name = "ruff check"
+language = "system"
+entry = "just lint-python"
+pass_filenames = false
+always_run = true
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "check-frontend"
+name = "svelte-check"
+language = "system"
+entry = "just check-frontend"
+pass_filenames = false
+always_run = true
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "test-unit"
+name = "vitest"
+language = "system"
+entry = "just test-unit"
+pass_filenames = false
+always_run = true
+stages = ["pre-commit"]

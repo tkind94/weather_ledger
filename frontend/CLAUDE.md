@@ -17,10 +17,11 @@ bun run test:e2e     # playwright (builds first; requires port 4173 free)
 
 ## E2E tests
 
-`playwright.config.ts` runs `global-setup.ts` before the server starts.
-`global-setup.ts` creates `/tmp/weather-ledger-test.duckdb` with seed data and sets
-`process.env.WEATHER_LEDGER_DB_PATH`. The preview server is started with `PORT=4173`.
-Do not skip globalSetup or point tests at the production DB.
+`playwright.config.ts` prepares `/tmp/weather-ledger-test.duckdb` via
+`tests/e2e/prepare_preview_db.py` before the preview server starts.
+`tests/e2e/test-db.ts` is the shared path constant used by the Playwright config.
+The preview server is started with `PORT=4173` and `WEATHER_LEDGER_DB_PATH` pointed at the
+seeded test database. Do not point tests at the production DB.
 
 ---
 
