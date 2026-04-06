@@ -4,12 +4,18 @@
 	type SearchSubmitHandler = (event: SubmitEvent) => void | Promise<void>;
 	type SearchInputHandler = (event: Event) => void;
 	type LocationSelectHandler = (location: KnownLocation) => void | Promise<void>;
+	type PendingLocationJob = {
+		jobId: string;
+		label: string;
+		status: 'queued' | 'running' | 'succeeded' | 'failed';
+	};
 
 	let {
 		selectedLocation,
 		searchQuery,
 		searchResults,
 		searchBusy = false,
+		pendingLocationJobs = [],
 		statusMessage = null,
 		onSearchInput,
 		onSearchSubmit,
@@ -19,6 +25,7 @@
 		searchQuery: string;
 		searchResults: KnownLocation[];
 		searchBusy?: boolean;
+		pendingLocationJobs?: PendingLocationJob[];
 		statusMessage?: string | null;
 		onSearchInput: SearchInputHandler;
 		onSearchSubmit: SearchSubmitHandler;
@@ -70,6 +77,20 @@
 					<span>{location.observationCount} days cached</span>
 					<span>{coordinateLabel(location.latitude, location.longitude)}</span>
 				</button>
+			{/each}
+		</div>
+	{/if}
+
+	{#if pendingLocationJobs.length > 0}
+		<div class="queued-jobs" aria-live="polite">
+			<p class="panel-kicker">Queue</p>
+			{#each pendingLocationJobs as job (job.jobId)}
+				<div class="job-card">
+					<strong>{job.label}</strong>
+					<span
+						>{job.status === 'queued' ? 'Queued for fetch' : 'Refreshing dashboard snapshot'}</span
+					>
+				</div>
 			{/each}
 		</div>
 	{/if}
@@ -198,6 +219,30 @@
 		display: grid;
 		gap: 0.75rem;
 		margin-top: 0.9rem;
+	}
+
+	.queued-jobs {
+		display: grid;
+		gap: 0.7rem;
+		margin-top: 1rem;
+		padding: 0.95rem 1rem;
+		border-radius: 1rem;
+		background: rgba(11, 114, 133, 0.08);
+	}
+
+	.job-card {
+		display: grid;
+		gap: 0.15rem;
+	}
+
+	.job-card strong {
+		font-size: 0.95rem;
+		color: #102033;
+	}
+
+	.job-card span {
+		font-size: 0.86rem;
+		color: #4d5c6c;
 	}
 
 	.result-card {

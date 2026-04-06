@@ -1,13 +1,23 @@
+import { randomUUID } from 'node:crypto';
+import { mkdir, rename, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 
 import { defaultLocation } from '$lib/server/config';
 import {
-	databasePath,
-	queryOne,
-	runWithExclusiveDatabaseAccess,
-	withDatabase
-} from '$lib/server/database';
+	claimQueuedLocationJobs,
+	createLocationJob,
+	getLocationJob as loadLocationJob,
+	hasQueuedLocationJobs,
+	markLocationJobFailed,
+	markLocationJobSucceeded,
+	recordLocationJobFetchResult,
+	type LocationJob,
+	type LocationJobLocation
+} from '$lib/server/location-job-store';
+import { queryOne, withDatabase } from '$lib/server/database';
+import { withInterprocessLock } from '$lib/server/interprocess-lock';
+import { databasePath, ledgerPath } from '$lib/server/storage-paths';
 
 type FetchResult = {
 	locationKey: string;
@@ -21,10 +31,17 @@ type FetchResult = {
 	existingLocation: boolean;
 };
 
+export type {
+	LocationJob,
+	LocationJobLocation,
+	LocationJobStatus
+} from '$lib/server/location-job-store';
+
 const dataPipelineDir = resolve(process.cwd(), '../data-pipeline');
 const defaultCommandTimeoutMs = 60_000;
 const dbtCommandTimeoutMs = 120_000;
 const forcedKillDelayMs = 5_000;
+const pipelineLockPath = `${databasePath}.pipeline.lock`;
 // eslint-disable-next-line no-control-regex
 const ansiEscapePattern = /\u001B\[[0-?]*[ -/]*[@-~]|\u009B[0-?]*[ -/]*[@-~]/g;
 const testLocationOverrideQuery = `
@@ -39,6 +56,7 @@ const testLocationOverrideQuery = `
 `;
 
 let pipelineQueue: Promise<unknown> = Promise.resolve();
+let locationJobProcessor: Promise<void> | null = null;
 
 export class PipelineRebuildError extends Error {
 	readonly location: FetchResult;
@@ -77,10 +95,13 @@ function normalizeCommandErrorDetail(cause: unknown): string {
 	return normalized === '' ? 'Unknown dbt error' : normalized;
 }
 
-function logRebuildFailure(location: FetchResult, cause: unknown): void {
+function logRebuildFailure(locations: FetchResult[], cause: unknown): void {
 	const detail = normalizeCommandErrorDetail(cause);
+	const locationSummary = locations
+		.map((location) => `${location.locationKey} (${location.canonicalName})`)
+		.join(', ');
 	console.error(
-		`[location-pipeline] dbt rebuild failed after caching ${location.locationKey} (${location.canonicalName}).\n${detail}`
+		`[location-pipeline] dbt rebuild failed after caching ${locationSummary}.\n${detail}`
 	);
 }
 
@@ -92,7 +113,11 @@ function logFetchFailure(cause: unknown): void {
 function publicPipelineError(cause: unknown): LocationPipelineError {
 	const detail = normalizeCommandErrorDetail(cause);
 
-	if (detail.includes('Could not set lock on file')) {
+	if (
+		detail.includes('Could not set lock on file') ||
+		detail.includes('database is locked') ||
+		detail.includes('Timed out waiting for lock')
+	) {
 		return new LocationPipelineError(
 			'The local weather database is busy. Retry the request in a moment.',
 			503
@@ -117,7 +142,8 @@ function publicPipelineError(cause: unknown): LocationPipelineError {
 }
 
 function runQueued<T>(task: () => Promise<T>): Promise<T> {
-	const run = pipelineQueue.then(task, task);
+	const runTask = () => withInterprocessLock(pipelineLockPath, task);
+	const run = pipelineQueue.then(runTask, runTask);
 	pipelineQueue = run.then(
 		() => undefined,
 		() => undefined
@@ -129,7 +155,16 @@ function pipelineEnvironment(): NodeJS.ProcessEnv {
 	return {
 		...process.env,
 		WEATHER_LEDGER_DB_PATH: databasePath,
-		DBT_DUCKDB_PATH: databasePath
+		WEATHER_LEDGER_LEDGER_PATH: ledgerPath
+	};
+}
+
+function locationJobLocation(result: FetchResult): LocationJobLocation {
+	return {
+		locationKey: result.locationKey,
+		canonicalName: result.canonicalName,
+		rowsStored: result.rowsStored,
+		existingLocation: result.existingLocation
 	};
 }
 
@@ -167,15 +202,25 @@ async function loadTestLocationOverride(locationKey: string): Promise<FetchResul
 	});
 }
 
+function skipsSnapshotRebuild(): boolean {
+	return testMapLocationOverrideKey() !== null;
+}
+
 function runCommand(
 	command: string,
 	args: string[],
-	timeoutMs = defaultCommandTimeoutMs
+	options: { timeoutMs?: number; env?: NodeJS.ProcessEnv } = {}
 ): Promise<string> {
+	const timeoutMs = options.timeoutMs ?? defaultCommandTimeoutMs;
+	const environment = {
+		...pipelineEnvironment(),
+		...options.env
+	};
+
 	return new Promise((resolveOutput, reject) => {
 		const child = spawn(command, args, {
 			cwd: dataPipelineDir,
-			env: pipelineEnvironment(),
+			env: environment,
 			stdio: ['ignore', 'pipe', 'pipe']
 		});
 
@@ -255,7 +300,33 @@ async function runFetch(args: string[]): Promise<FetchResult> {
 	}
 }
 
-async function rebuildMarts(): Promise<void> {
+async function fetchLocationFromCoordinates(
+	latitude: number,
+	longitude: number
+): Promise<FetchResult> {
+	const locationKey = testMapLocationOverrideKey();
+	if (locationKey !== null) {
+		return loadTestLocationOverride(locationKey);
+	}
+
+	return runFetch(['--latitude', String(latitude), '--longitude', String(longitude)]);
+}
+
+function snapshotBuildPath(): string {
+	const snapshotStem = basename(databasePath, '.duckdb').replace(/[^A-Za-z0-9_]/g, '_');
+	const uniqueSuffix = randomUUID().replace(/-/g, '');
+	return resolve(
+		dirname(databasePath),
+		`${snapshotStem}_tmp_${process.pid}_${uniqueSuffix}.duckdb`
+	);
+}
+
+async function prepareSnapshot(snapshotPath: string): Promise<void> {
+	await mkdir(dirname(snapshotPath), { recursive: true });
+	await runCommand('uv', ['run', 'python', 'build_snapshot.py', '--output-path', snapshotPath]);
+}
+
+async function rebuildMarts(snapshotPath: string): Promise<void> {
 	await runCommand(
 		'uv',
 		[
@@ -270,38 +341,141 @@ async function rebuildMarts(): Promise<void> {
 			'weather_monthly_extremes',
 			'dashboard_summary'
 		],
-		dbtCommandTimeoutMs
+		{
+			timeoutMs: dbtCommandTimeoutMs,
+			env: {
+				DBT_DUCKDB_PATH: snapshotPath
+			}
+		}
 	);
+}
+
+async function publishSnapshot(snapshotPath: string): Promise<void> {
+	await rename(snapshotPath, databasePath);
+}
+
+async function cleanupSnapshot(snapshotPath: string): Promise<void> {
+	await rm(snapshotPath, { force: true });
+}
+
+async function rebuildPublishedSnapshot(): Promise<void> {
+	if (skipsSnapshotRebuild()) {
+		return;
+	}
+
+	const snapshotPath = snapshotBuildPath();
+
+	try {
+		await prepareSnapshot(snapshotPath);
+		await rebuildMarts(snapshotPath);
+		await publishSnapshot(snapshotPath);
+	} catch (error) {
+		await cleanupSnapshot(snapshotPath);
+		throw error;
+	}
 }
 
 async function fetchAndRebuild(fetchArgs: string[]): Promise<FetchResult> {
 	const result = await runFetch(fetchArgs);
 
 	try {
-		await rebuildMarts();
+		await rebuildPublishedSnapshot();
 		return result;
 	} catch (error) {
-		logRebuildFailure(result, error);
+		logRebuildFailure([result], error);
 		throw new PipelineRebuildError(result);
 	}
 }
 
+async function drainQueuedLocationJobs(): Promise<void> {
+	const fetchedJobs: Array<{ jobId: string; result: FetchResult }> = [];
+
+	while (true) {
+		const jobs = claimQueuedLocationJobs();
+		if (jobs.length === 0) {
+			break;
+		}
+
+		for (const job of jobs) {
+			try {
+				const result = await fetchLocationFromCoordinates(job.latitude, job.longitude);
+				recordLocationJobFetchResult(job.jobId, locationJobLocation(result));
+				fetchedJobs.push({ jobId: job.jobId, result });
+			} catch (error) {
+				logFetchFailure(error);
+				const failure = error instanceof LocationPipelineError ? error : publicPipelineError(error);
+				markLocationJobFailed(job.jobId, { message: failure.userMessage });
+			}
+		}
+	}
+
+	if (fetchedJobs.length === 0) {
+		return;
+	}
+
+	if (skipsSnapshotRebuild()) {
+		for (const job of fetchedJobs) {
+			markLocationJobSucceeded(job.jobId, locationJobLocation(job.result));
+		}
+		return;
+	}
+
+	try {
+		await rebuildPublishedSnapshot();
+		for (const job of fetchedJobs) {
+			markLocationJobSucceeded(job.jobId, locationJobLocation(job.result));
+		}
+	} catch (error) {
+		logRebuildFailure(
+			fetchedJobs.map((job) => job.result),
+			error
+		);
+
+		for (const job of fetchedJobs) {
+			markLocationJobFailed(job.jobId, {
+				location: locationJobLocation(job.result),
+				message: new PipelineRebuildError(job.result).userMessage,
+				partialSuccess: true
+			});
+		}
+	}
+}
+
+function scheduleLocationJobProcessor(): void {
+	if (locationJobProcessor !== null) {
+		return;
+	}
+
+	locationJobProcessor = runQueued(async () => {
+		await drainQueuedLocationJobs();
+	})
+		.catch((error) => {
+			console.error(
+				`[location-pipeline] background location queue failed.\n${normalizeCommandErrorDetail(error)}`
+			);
+		})
+		.finally(() => {
+			locationJobProcessor = null;
+			if (hasQueuedLocationJobs()) {
+				scheduleLocationJobProcessor();
+			}
+		});
+}
+
 export function ensureDefaultLocationData(): Promise<FetchResult> {
 	return runQueued(async () => {
-		return runWithExclusiveDatabaseAccess(async () => {
-			return fetchAndRebuild([
-				'--latitude',
-				defaultLocation.latitude,
-				'--longitude',
-				defaultLocation.longitude,
-				'--location-key',
-				defaultLocation.key,
-				'--location-name',
-				defaultLocation.name,
-				'--timezone',
-				defaultLocation.timezone
-			]);
-		});
+		return fetchAndRebuild([
+			'--latitude',
+			defaultLocation.latitude,
+			'--longitude',
+			defaultLocation.longitude,
+			'--location-key',
+			defaultLocation.key,
+			'--location-name',
+			defaultLocation.name,
+			'--timezone',
+			defaultLocation.timezone
+		]);
 	});
 }
 
@@ -315,8 +489,19 @@ export function ensureLocationFromCoordinates(
 			return loadTestLocationOverride(locationKey);
 		}
 
-		return runWithExclusiveDatabaseAccess(async () => {
-			return fetchAndRebuild(['--latitude', String(latitude), '--longitude', String(longitude)]);
-		});
+		return fetchAndRebuild(['--latitude', String(latitude), '--longitude', String(longitude)]);
 	});
+}
+
+export async function enqueueLocationJob(
+	latitude: number,
+	longitude: number
+): Promise<LocationJob> {
+	const job = createLocationJob(latitude, longitude);
+	scheduleLocationJobProcessor();
+	return job;
+}
+
+export async function getLocationJob(jobId: string): Promise<LocationJob | null> {
+	return loadLocationJob(jobId);
 }

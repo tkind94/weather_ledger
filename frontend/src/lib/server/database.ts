@@ -1,23 +1,17 @@
 import { createRequire } from 'node:module';
-import { resolve } from 'node:path';
 
-import { withInterprocessLock } from './interprocess-lock';
+import { databasePath } from './storage-paths';
 
 const require = createRequire(import.meta.url);
 const duckdb = require('duckdb') as typeof import('duckdb');
 
-export const databasePath =
-	process.env.WEATHER_LEDGER_DB_PATH ?? resolve(process.cwd(), '../database/weather.duckdb');
-const databaseLockPath = `${databasePath}.access.lock`;
-
 type DB = InstanceType<typeof duckdb.Database>;
 
-let databaseAccessQueue: Promise<unknown> = Promise.resolve();
+let databaseWriteQueue: Promise<unknown> = Promise.resolve();
 
-function runSerializedDatabaseTask<T>(task: () => Promise<T>): Promise<T> {
-	const runTask = () => withInterprocessLock(databaseLockPath, task);
-	const run = databaseAccessQueue.then(runTask, runTask);
-	databaseAccessQueue = run.then(
+function runSerializedWriteTask<T>(task: () => Promise<T>): Promise<T> {
+	const run = databaseWriteQueue.then(task, task);
+	databaseWriteQueue = run.then(
 		() => undefined,
 		() => undefined
 	);
@@ -38,21 +32,27 @@ export function openDatabase(accessMode: 'READ_ONLY' | 'READ_WRITE' = 'READ_ONLY
 }
 
 export function runWithExclusiveDatabaseAccess<T>(task: () => Promise<T>): Promise<T> {
-	return runSerializedDatabaseTask(task);
+	return runSerializedWriteTask(task);
 }
 
 export function withDatabase<T>(
 	task: (db: DB) => Promise<T>,
 	accessMode: 'READ_ONLY' | 'READ_WRITE' = 'READ_ONLY'
 ): Promise<T> {
-	return runSerializedDatabaseTask(async () => {
+	const runTask = async () => {
 		const db = await openDatabase(accessMode);
 		try {
 			return await task(db);
 		} finally {
 			await closeDatabase(db);
 		}
-	});
+	};
+
+	if (accessMode === 'READ_ONLY') {
+		return runTask();
+	}
+
+	return runSerializedWriteTask(runTask);
 }
 
 export function queryAll<T>(db: DB, sql: string, params: unknown[] = []): Promise<T[]> {

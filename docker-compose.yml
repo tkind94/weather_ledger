@@ -7,6 +7,8 @@ services:
     environment:
       TZ: America/Denver
       DBT_PROFILES_DIR: /app/data-pipeline/.dbt
+      WEATHER_LEDGER_DB_PATH: /app/database/weather.duckdb
+      WEATHER_LEDGER_LEDGER_PATH: /app/database/weather.sqlite3
       DBT_DUCKDB_PATH: /app/database/weather.duckdb
     volumes:
       - ./database:/app/database
@@ -27,6 +29,7 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       WEATHER_LEDGER_DB_PATH: /app/database/weather.duckdb
+      WEATHER_LEDGER_LEDGER_PATH: /app/database/weather.sqlite3
     depends_on:
       weather-fetcher:
         condition: service_healthy

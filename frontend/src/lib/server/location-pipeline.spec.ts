@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -179,9 +179,38 @@ async function seedCachedFortCollins(
 	}
 }
 
+async function waitForLocationJob(
+	pipeline: {
+		getLocationJob(jobId: string): Promise<{
+			status: string;
+			location?: { locationKey: string } | null;
+		} | null>;
+	},
+	jobId: string,
+	status: 'succeeded' | 'failed' = 'succeeded'
+): Promise<{
+	status: string;
+	location?: { locationKey: string } | null;
+} | null> {
+	const deadline = Date.now() + 2_000;
+
+	while (Date.now() < deadline) {
+		const job = await pipeline.getLocationJob(jobId);
+		if (job?.status === status) {
+			return job;
+		}
+
+		await new Promise((resolveWait) => setTimeout(resolveWait, 10));
+	}
+
+	throw new Error(`Timed out waiting for location job ${jobId} to reach ${status}`);
+}
+
 describe('location pipeline regression coverage', () => {
 	afterEach(() => {
 		delete process.env.WEATHER_LEDGER_DB_PATH;
+		delete process.env.WEATHER_LEDGER_LEDGER_PATH;
+		delete process.env.WEATHER_LEDGER_JOB_DB_PATH;
 		delete process.env.DBT_DUCKDB_PATH;
 		delete process.env.WEATHER_LEDGER_DEFAULT_LOCATION_KEY;
 		delete process.env.WEATHER_LEDGER_DEFAULT_LOCATION_NAME;
@@ -201,6 +230,7 @@ describe('location pipeline regression coverage', () => {
 			await seedCachedFortCollins(databasePath, { includeLocationCatalog: true });
 
 			process.env.WEATHER_LEDGER_DB_PATH = databasePath;
+			process.env.WEATHER_LEDGER_LEDGER_PATH = join(tempDir, 'weather.sqlite3');
 			process.env.DBT_DUCKDB_PATH = databasePath;
 			process.env.WEATHER_LEDGER_TEST_MAP_LOCATION_KEY = 'fort-collins-colorado-us';
 
@@ -225,6 +255,7 @@ describe('location pipeline regression coverage', () => {
 			await seedCachedFortCollins(databasePath, { includeLocationCatalog: true });
 
 			process.env.WEATHER_LEDGER_DB_PATH = databasePath;
+			process.env.WEATHER_LEDGER_LEDGER_PATH = join(tempDir, 'weather.sqlite3');
 			process.env.DBT_DUCKDB_PATH = databasePath;
 			process.env.WEATHER_LEDGER_TEST_MAP_LOCATION_KEY = 'fort-collins-colorado-us';
 
@@ -245,7 +276,135 @@ describe('location pipeline regression coverage', () => {
 		}
 	});
 
-	it('waits for queued reads before starting the default location pipeline commands', async () => {
+	it('coalesces multiple queued location jobs into one snapshot rebuild', async () => {
+		const tempDir = mkdtempSync(join(tmpdir(), 'weather-ledger-batch-'));
+		const databasePath = join(tempDir, 'weather.duckdb');
+
+		try {
+			await seedCachedFortCollins(databasePath);
+
+			process.env.WEATHER_LEDGER_DB_PATH = databasePath;
+			process.env.WEATHER_LEDGER_LEDGER_PATH = join(tempDir, 'weather.sqlite3');
+			process.env.DBT_DUCKDB_PATH = databasePath;
+
+			const fetchResults = [
+				{
+					locationKey: 'boulder-colorado-us',
+					canonicalName: 'Boulder, Colorado, United States',
+					latitude: 40.01499,
+					longitude: -105.27055,
+					timezone: 'America/Denver',
+					rowsStored: 30,
+					startDate: '2026-02-17',
+					endDate: '2026-03-18',
+					existingLocation: false
+				},
+				{
+					locationKey: 'loveland-colorado-us',
+					canonicalName: 'Loveland, Colorado, United States',
+					latitude: 40.39776,
+					longitude: -105.07498,
+					timezone: 'America/Denver',
+					rowsStored: 30,
+					startDate: '2026-02-17',
+					endDate: '2026-03-18',
+					existingLocation: false
+				},
+				{
+					locationKey: 'denver-colorado-us',
+					canonicalName: 'Denver, Colorado, United States',
+					latitude: 39.73924,
+					longitude: -104.99025,
+					timezone: 'America/Denver',
+					rowsStored: 30,
+					startDate: '2026-02-17',
+					endDate: '2026-03-18',
+					existingLocation: false
+				}
+			];
+			const spawnCalls: Array<{ command: string; args: string[] }> = [];
+
+			vi.doMock('node:child_process', () => ({
+				spawn(command: string, args: string[]) {
+					spawnCalls.push({ command, args });
+					const child = new EventEmitter() as EventEmitter & {
+						stdout: EventEmitter;
+						stderr: EventEmitter;
+						kill: () => void;
+					};
+					child.stdout = new EventEmitter();
+					child.stderr = new EventEmitter();
+					child.kill = () => {};
+
+					queueMicrotask(() => {
+						if (args.includes('fetch.py')) {
+							const nextResult = fetchResults.shift();
+							if (!nextResult) {
+								child.stderr.emit('data', 'missing mock fetch result');
+								child.emit('close', 1, null);
+								return;
+							}
+
+							child.stdout.emit('data', JSON.stringify(nextResult));
+							child.emit('close', 0, null);
+							return;
+						}
+
+						if (args.includes('build_snapshot.py')) {
+							const outputIndex = args.indexOf('--output-path');
+							const outputPath = outputIndex >= 0 ? args[outputIndex + 1] : null;
+							if (outputPath === null) {
+								child.emit('close', 0, null);
+								return;
+							}
+
+							openRawDatabase(outputPath)
+								.then((db) => closeRawDatabase(db))
+								.then(() => {
+									child.emit('close', 0, null);
+								});
+							return;
+						}
+
+						child.emit('close', 0, null);
+					});
+
+					return child;
+				}
+			}));
+
+			const pipeline = await import('./location-pipeline');
+			const jobs = await Promise.all([
+				pipeline.enqueueLocationJob(40.01499, -105.27055),
+				pipeline.enqueueLocationJob(40.39776, -105.07498),
+				pipeline.enqueueLocationJob(39.73924, -104.99025)
+			]);
+
+			const completedJobs = await Promise.all(
+				jobs.map((job) => waitForLocationJob(pipeline, job.jobId, 'succeeded'))
+			);
+
+			expect(completedJobs.map((job) => job?.status)).toEqual([
+				'succeeded',
+				'succeeded',
+				'succeeded'
+			]);
+			expect(completedJobs.map((job) => job?.location?.locationKey)).toEqual([
+				'boulder-colorado-us',
+				'loveland-colorado-us',
+				'denver-colorado-us'
+			]);
+			expect(spawnCalls.filter((call) => call.args.includes('fetch.py'))).toHaveLength(3);
+			expect(spawnCalls.filter((call) => call.args.includes('build_snapshot.py'))).toHaveLength(1);
+			expect(
+				spawnCalls.filter((call) => call.args.includes('dbt') && call.args.includes('build'))
+			).toHaveLength(1);
+		} finally {
+			rmSync(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	it('allows snapshot rebuild commands to start while read-only queries are in progress', async () => {
 		const tempDir = mkdtempSync(join(tmpdir(), 'weather-ledger-lock-'));
 		const databasePath = join(tempDir, 'weather.duckdb');
 
@@ -253,6 +412,7 @@ describe('location pipeline regression coverage', () => {
 			await seedCachedFortCollins(databasePath);
 
 			process.env.WEATHER_LEDGER_DB_PATH = databasePath;
+			process.env.WEATHER_LEDGER_LEDGER_PATH = join(tempDir, 'weather.sqlite3');
 			process.env.DBT_DUCKDB_PATH = databasePath;
 			process.env.WEATHER_LEDGER_DEFAULT_LOCATION_KEY = 'fort-collins-colorado-us';
 			process.env.WEATHER_LEDGER_DEFAULT_LOCATION_NAME = 'Fort Collins, Colorado, United States';
@@ -274,7 +434,7 @@ describe('location pipeline regression coverage', () => {
 					child.kill = () => {};
 
 					queueMicrotask(() => {
-						if (args.includes('python')) {
+						if (args.includes('fetch.py')) {
 							child.stdout.emit(
 								'data',
 								JSON.stringify({
@@ -289,6 +449,22 @@ describe('location pipeline regression coverage', () => {
 									existingLocation: true
 								})
 							);
+						}
+
+						if (args.includes('build_snapshot.py')) {
+							const outputIndex = args.indexOf('--output-path');
+							const outputPath = outputIndex >= 0 ? args[outputIndex + 1] : null;
+							if (outputPath === null) {
+								child.emit('close', 0, null);
+								return;
+							}
+
+							openRawDatabase(outputPath)
+								.then((db) => closeRawDatabase(db))
+								.then(() => {
+									child.emit('close', 0, null);
+								});
+							return;
 						}
 
 						child.emit('close', 0, null);
@@ -308,7 +484,7 @@ describe('location pipeline regression coverage', () => {
 			const refreshPromise = pipeline.ensureDefaultLocationData();
 
 			await new Promise((resolvePause) => setTimeout(resolvePause, 10));
-			expect(spawnCalls).toHaveLength(0);
+			expect(spawnCalls).toHaveLength(3);
 
 			await queuedRead;
 
@@ -319,12 +495,20 @@ describe('location pipeline regression coverage', () => {
 				existingLocation: true,
 				rowsStored: 0
 			});
-			expect(spawnCalls).toHaveLength(2);
+			expect(spawnCalls).toHaveLength(3);
 			expect(spawnCalls[0]).toMatchObject({
 				command: 'uv',
 				args: expect.arrayContaining(['run', 'python', 'fetch.py', '--json'])
 			});
 			expect(spawnCalls[1]).toMatchObject({
+				command: 'uv',
+				args: expect.arrayContaining(['run', 'python', 'build_snapshot.py'])
+			});
+			const outputIndex = spawnCalls[1].args.indexOf('--output-path');
+			expect(outputIndex).toBeGreaterThan(-1);
+			const buildSnapshotOutputPath = spawnCalls[1].args[outputIndex + 1];
+			expect(basename(buildSnapshotOutputPath, '.duckdb')).not.toContain('.');
+			expect(spawnCalls[2]).toMatchObject({
 				command: 'uv',
 				args: expect.arrayContaining(['run', 'dbt', 'build'])
 			});

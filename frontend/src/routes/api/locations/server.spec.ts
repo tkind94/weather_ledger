@@ -1,47 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const {
-	ensureLocationFromCoordinates,
-	searchKnownLocations,
-	MockPipelineRebuildError,
-	MockLocationPipelineError
-} = vi.hoisted(() => {
-	class MockPipelineRebuildError extends Error {
-		readonly location: Record<string, unknown>;
-		readonly userMessage: string;
-
-		constructor(location: Record<string, unknown>, userMessage = 'Dashboard rebuild failed') {
-			super(userMessage);
-			this.name = 'PipelineRebuildError';
-			this.location = location;
-			this.userMessage = userMessage;
-		}
-	}
-
-	class MockLocationPipelineError extends Error {
-		readonly userMessage: string;
-		readonly statusCode: number;
-
-		constructor(userMessage: string, statusCode: number) {
-			super(userMessage);
-			this.name = 'LocationPipelineError';
-			this.userMessage = userMessage;
-			this.statusCode = statusCode;
-		}
-	}
-
-	return {
-		ensureLocationFromCoordinates: vi.fn(),
-		searchKnownLocations: vi.fn(),
-		MockPipelineRebuildError,
-		MockLocationPipelineError
-	};
-});
+const { enqueueLocationJob, searchKnownLocations } = vi.hoisted(() => ({
+	enqueueLocationJob: vi.fn(),
+	searchKnownLocations: vi.fn()
+}));
 
 vi.mock('$lib/server/location-pipeline', () => ({
-	ensureLocationFromCoordinates,
-	PipelineRebuildError: MockPipelineRebuildError,
-	LocationPipelineError: MockLocationPipelineError
+	enqueueLocationJob
 }));
 
 vi.mock('$lib/server/weather', () => ({
@@ -93,58 +58,42 @@ describe('/api/locations', () => {
 	});
 
 	it('returns the ensured location for successful map requests', async () => {
-		const location = {
-			locationKey: 'loveland-colorado-us',
-			canonicalName: 'Loveland, Colorado, United States',
-			rowsStored: 0,
-			existingLocation: true
+		const job = {
+			jobId: 'job-123',
+			latitude: 40.39776,
+			longitude: -105.07498,
+			status: 'queued',
+			createdAt: '2026-03-18T12:00:00Z',
+			updatedAt: '2026-03-18T12:00:00Z',
+			startedAt: null,
+			finishedAt: null,
+			location: null,
+			message: null,
+			partialSuccess: false
 		};
-		ensureLocationFromCoordinates.mockResolvedValue(location);
+		enqueueLocationJob.mockResolvedValue(job);
 
 		const response = await POST({
 			request: jsonRequest({ latitude: 40.39776, longitude: -105.07498 })
 		} as Parameters<typeof POST>[0]);
 
-		expect(ensureLocationFromCoordinates).toHaveBeenCalledWith(40.39776, -105.07498);
-		expect(response.status).toBe(200);
-		await expect(response.json()).resolves.toEqual({ location });
+		expect(enqueueLocationJob).toHaveBeenCalledWith(40.39776, -105.07498);
+		expect(response.status).toBe(202);
+		expect(response.headers.get('cache-control')).toBe('no-store');
+		await expect(response.json()).resolves.toEqual({ job });
 	});
 
-	it('returns partial success details when rebuild fails after caching', async () => {
-		const location = {
-			locationKey: 'loveland-colorado-us',
-			canonicalName: 'Loveland, Colorado, United States',
-			rowsStored: 4,
-			existingLocation: false
-		};
-		ensureLocationFromCoordinates.mockRejectedValue(
-			new MockPipelineRebuildError(location, 'Cached rows but dbt failed')
-		);
-
-		const response = await POST({
-			request: jsonRequest({ latitude: 40.39776, longitude: -105.07498 })
-		} as Parameters<typeof POST>[0]);
-
-		expect(response.status).toBe(502);
-		await expect(response.json()).resolves.toEqual({
-			location,
-			message: 'Cached rows but dbt failed',
-			partialSuccess: true
-		});
-	});
-
-	it('returns mapped pipeline errors with their public status code', async () => {
-		ensureLocationFromCoordinates.mockRejectedValue(
-			new MockLocationPipelineError('The local weather database is busy.', 503)
-		);
+	it('returns a public queue error when the enqueue step fails', async () => {
+		enqueueLocationJob.mockRejectedValue(new Error('database is locked'));
 
 		const response = await POST({
 			request: jsonRequest({ latitude: 40.39776, longitude: -105.07498 })
 		} as Parameters<typeof POST>[0]);
 
 		expect(response.status).toBe(503);
+		expect(response.headers.get('cache-control')).toBe('no-store');
 		await expect(response.json()).resolves.toEqual({
-			message: 'The local weather database is busy.'
+			message: 'Unable to queue that location right now. Retry the request.'
 		});
 	});
 

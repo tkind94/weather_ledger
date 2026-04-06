@@ -1,12 +1,12 @@
 # Weather Ledger
 
-Weather Ledger is a local-first weather history app for cached and on-demand locations. It ingests daily observations from Open-Meteo into a shared DuckDB file, transforms them with dbt, and serves a SvelteKit dashboard with local search plus click-to-add map selection.
+Weather Ledger is a local-first weather history app for cached and on-demand locations. It ingests daily observations from Open-Meteo into a local SQLite ledger, publishes a DuckDB snapshot with dbt-built marts, and serves a SvelteKit dashboard with local search plus a click-to-add map that queues background refresh jobs.
 
 ## Project Layout
 
-- `data-pipeline/`: Python ingestion script, dbt project, and cron container.
+- `data-pipeline/`: Python ingestion scripts, snapshot builder, dbt project, and cron container.
 - `frontend/`: SvelteKit app running on Bun with a server-side DuckDB query path.
-- `database/`: Shared `weather.duckdb` file used by Python, dbt, and the frontend.
+- `database/`: Local generated state including the SQLite ledger and published DuckDB snapshot.
 
 ## Prerequisites
 
@@ -29,10 +29,11 @@ If you want to clear generated output first:
 ./scripts/clean.sh
 ```
 
-Populate the database and build the first dbt models:
+Populate the ledger and publish the first DuckDB snapshot:
 
 ```sh
 cd data-pipeline && uv run python fetch.py
+cd data-pipeline && uv run python build_snapshot.py
 cd data-pipeline && DBT_PROFILES_DIR="$PWD/.dbt" uv run dbt build --select weather_daily_history location_catalog weather_monthly_extremes dashboard_summary
 ```
 
@@ -74,8 +75,9 @@ The most useful validation sequence is:
 
 What success looks like:
 
-- `data-pipeline/fetch.py` creates or updates `database/weather.duckdb`
-- dbt builds `weather_daily_history`, `location_catalog`, `weather_monthly_extremes`, and `dashboard_summary`
+- `data-pipeline/fetch.py` creates or updates `database/weather.sqlite3`
+- `data-pipeline/build_snapshot.py` republishes `database/weather.duckdb`
+- dbt builds `weather_daily_history`, `location_catalog`, `weather_monthly_extremes`, and `dashboard_summary` into that DuckDB snapshot
 - SvelteKit typecheck and tests pass
 - the page shows a cached location search, a click-to-add map, weather observations, metrics, and the daily observations table
 
@@ -83,7 +85,8 @@ What success looks like:
 
 Generated artifacts are intentionally ignored at the repo root.
 
-- `database/weather.duckdb` is local generated state and should not be committed.
+- `database/weather.sqlite3` and `database/weather.duckdb` are local generated state and should not be committed.
+- `database/weather.jobs.sqlite3` stores queued background location refresh jobs and should not be committed.
 - dbt output lives under `data-pipeline/target/` and `data-pipeline/logs/`.
 - frontend build output lives under `frontend/build/` and `frontend/.svelte-kit/`.
 
@@ -101,10 +104,12 @@ Use this to clear them:
 
 ## Important Files
 
-- `data-pipeline/fetch.py`: location-aware Open-Meteo ingestion into DuckDB
-- `data-pipeline/.dbt/profiles.yml`: local dbt profile for the shared database
+- `data-pipeline/fetch.py`: location-aware Open-Meteo ingestion into the SQLite ledger
+- `data-pipeline/build_snapshot.py`: SQLite-to-DuckDB raw snapshot publisher
+- `data-pipeline/.dbt/profiles.yml`: local dbt profile for the published DuckDB snapshot
 - `frontend/src/lib/server/weather.ts`: server-only DuckDB query helper
 - `frontend/src/lib/server/location-pipeline.ts`: on-demand fetch + dbt orchestration from the app server
+- `frontend/src/lib/server/location-job-store.ts`: SQLite-backed job queue for background map adds
 - `frontend/src/routes/+page.server.ts`: page load function
 - `frontend/src/routes/+page.svelte`: weather dashboard
 

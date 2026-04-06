@@ -14,6 +14,7 @@ Equivalent manual commands:
 
 ```sh
 cd data-pipeline && uv run python fetch.py
+cd data-pipeline && uv run python build_snapshot.py
 cd data-pipeline && DBT_PROFILES_DIR="$PWD/.dbt" uv run dbt build
 cd frontend && bun run check
 cd frontend && bun run test:unit -- --run
@@ -49,7 +50,9 @@ That removes the generated DuckDB file, dbt target output, dbt logs, and fronten
 
 - Use Bun for Node and TypeScript dependencies and scripts.
 - Use `uv` for Python dependency management and execution.
-- The shared database file is `database/weather.duckdb`.
+- Mutable ingestion state lives in `database/weather.sqlite3`.
+- The published frontend/dbt snapshot lives in `database/weather.duckdb`.
+- Background map-add jobs live in `database/weather.jobs.sqlite3` by default.
 - Keep DuckDB access in server-only frontend modules.
 - Validate ingestion before changing frontend data contracts.
 
@@ -58,6 +61,8 @@ That removes the generated DuckDB file, dbt target output, dbt logs, and fronten
 - `DBT_PROFILES_DIR`: points dbt at `data-pipeline/.dbt`
 - `DBT_DUCKDB_PATH`: overrides the DuckDB file path for dbt
 - `WEATHER_LEDGER_DB_PATH`: overrides the DuckDB file path for the frontend server
+- `WEATHER_LEDGER_LEDGER_PATH`: overrides the SQLite ledger path for ingestion
+- `WEATHER_LEDGER_JOB_DB_PATH`: overrides the SQLite queue path for background location jobs
 - `CLOUDFLARE_TUNNEL_TOKEN`: enables the optional tunnel container
 
 ## Running The App

@@ -1,10 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 
-import {
-	ensureLocationFromCoordinates,
-	LocationPipelineError,
-	PipelineRebuildError
-} from '$lib/server/location-pipeline';
+import { enqueueLocationJob } from '$lib/server/location-pipeline';
 import { searchKnownLocations } from '$lib/server/weather';
 
 import type { RequestHandler } from './$types';
@@ -48,21 +44,12 @@ export const POST: RequestHandler = async ({ request }) => {
 	const longitude = parseLongitude((body as { longitude?: unknown }).longitude);
 
 	try {
-		const location = await ensureLocationFromCoordinates(latitude, longitude);
-
-		return json({ location });
-	} catch (caught) {
-		if (caught instanceof PipelineRebuildError) {
-			return json(
-				{ location: caught.location, message: caught.userMessage, partialSuccess: true },
-				{ status: 502 }
-			);
-		}
-
-		if (caught instanceof LocationPipelineError) {
-			return json({ message: caught.userMessage }, { status: caught.statusCode });
-		}
-
-		throw caught;
+		const job = await enqueueLocationJob(latitude, longitude);
+		return json({ job }, { status: 202, headers: { 'cache-control': 'no-store' } });
+	} catch {
+		return json(
+			{ message: 'Unable to queue that location right now. Retry the request.' },
+			{ status: 503, headers: { 'cache-control': 'no-store' } }
+		);
 	}
 };

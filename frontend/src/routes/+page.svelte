@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { onDestroy } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 
 	import LocationSearchPanel from '$lib/components/LocationSearchPanel.svelte';
 	import LocationPickerMap from '$lib/components/LocationPickerMap.svelte';
@@ -11,6 +13,41 @@
 
 	type SearchResponse = {
 		locations: KnownLocation[];
+	};
+
+	type LocationJobLocation = {
+		locationKey: string;
+		canonicalName: string;
+		rowsStored: number;
+		existingLocation: boolean;
+	};
+
+	type LocationJobResponse = {
+		jobId: string;
+		latitude: number;
+		longitude: number;
+		status: 'queued' | 'running' | 'succeeded' | 'failed';
+		createdAt: string;
+		updatedAt: string;
+		startedAt: string | null;
+		finishedAt: string | null;
+		location: LocationJobLocation | null;
+		message: string | null;
+		partialSuccess: boolean;
+	};
+
+	type EnqueueResponse = {
+		job: LocationJobResponse;
+	};
+
+	type LocationJobStatusResponse = {
+		job: LocationJobResponse;
+	};
+
+	type PendingLocationJob = {
+		jobId: string;
+		label: string;
+		status: 'queued' | 'running' | 'succeeded' | 'failed';
 	};
 
 	type EnsureResponse = {
@@ -38,9 +75,157 @@
 	let searchQuery = $derived(searchInput ?? selectedLocation?.canonicalName ?? '');
 	let searchResults = $state<KnownLocation[]>([]);
 	let searchBusy = $state(false);
-	let loadingLocation = $state(false);
+	let submittingLocation = $state(false);
 	let statusMessage = $state<string | null>(null);
+	let pendingLocationJobs = $state<LocationJobResponse[]>([]);
+	let activeMapJobId = $state<string | null>(null);
 	let searchController: AbortController | null = null;
+	const pollingJobIds = new SvelteSet<string>();
+	let destroyed = false;
+
+	const pendingLocationJobCards = $derived(
+		pendingLocationJobs.map<PendingLocationJob>((job) => ({
+			jobId: job.jobId,
+			label: job.location?.canonicalName ?? coordinateLabel(job.latitude, job.longitude),
+			status: job.status
+		}))
+	);
+
+	onDestroy(() => {
+		destroyed = true;
+		pollingJobIds.clear();
+	});
+
+	function delay(ms: number): Promise<void> {
+		return new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
+	}
+
+	function isPendingLocationJob(job: LocationJobResponse): boolean {
+		return job.status === 'queued' || job.status === 'running';
+	}
+
+	function replacePendingLocationJob(job: LocationJobResponse): void {
+		if (!isPendingLocationJob(job)) {
+			pendingLocationJobs = pendingLocationJobs.filter((item) => item.jobId !== job.jobId);
+			return;
+		}
+
+		pendingLocationJobs = [
+			...pendingLocationJobs.filter((item) => item.jobId !== job.jobId),
+			job
+		].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+	}
+
+	function queuedLocationMessage(job: LocationJobResponse): string {
+		return `Queued a background refresh for ${coordinateLabel(job.latitude, job.longitude)}. We'll open it automatically when the dashboard is ready.`;
+	}
+
+	function runningLocationMessage(job: LocationJobResponse): string {
+		if (job.location !== null) {
+			return `Refreshing the dashboard for ${job.location.canonicalName}...`;
+		}
+
+		return `Fetching weather data for ${coordinateLabel(job.latitude, job.longitude)} and rebuilding the dashboard...`;
+	}
+
+	function completionMessage(location: LocationJobLocation): string {
+		return location.rowsStored > 0
+			? `Cached ${location.rowsStored} new daily observations for ${location.canonicalName}.`
+			: `${location.canonicalName} is already up to date.`;
+	}
+
+	async function pollLocationJob(jobId: string): Promise<void> {
+		if (pollingJobIds.has(jobId)) {
+			return;
+		}
+
+		pollingJobIds.add(jobId);
+
+		try {
+			while (!destroyed) {
+				const response = await fetch(`/api/location-jobs/${encodeURIComponent(jobId)}`, {
+					cache: 'no-store'
+				});
+
+				if (!response.ok) {
+					const failure = await readErrorResponse(response);
+					throw new Error(failure.message);
+				}
+
+				const payload = (await response.json()) as LocationJobStatusResponse;
+				const job = payload.job;
+				replacePendingLocationJob(job);
+
+				if (job.status === 'queued') {
+					if (activeMapJobId === job.jobId) {
+						statusMessage = queuedLocationMessage(job);
+					}
+
+					await delay(400);
+					continue;
+				}
+
+				if (job.status === 'running') {
+					if (activeMapJobId === job.jobId) {
+						statusMessage = runningLocationMessage(job);
+					}
+
+					await delay(400);
+					continue;
+				}
+
+				pendingLocationJobs = pendingLocationJobs.filter((item) => item.jobId !== job.jobId);
+
+				if (job.status === 'failed') {
+					if (activeMapJobId === job.jobId) {
+						activeMapJobId = null;
+					}
+
+					statusMessage = job.message ?? 'Unable to finish loading that location right now.';
+					return;
+				}
+
+				if (job.location === null) {
+					if (activeMapJobId === job.jobId) {
+						activeMapJobId = null;
+					}
+
+					statusMessage = 'Location refresh completed.';
+					return;
+				}
+
+				const message = completionMessage(job.location);
+				if (activeMapJobId !== job.jobId) {
+					statusMessage = `${job.location.canonicalName} is ready in your local cache.`;
+					return;
+				}
+
+				statusMessage = message;
+				searchResults = [];
+				searchInput = job.location.canonicalName;
+				activeMapJobId = null;
+				let locationHref = resolve('/');
+				locationHref += `?location=${encodeURIComponent(job.location.locationKey)}`;
+				try {
+					await goto(locationHref, { invalidateAll: true });
+				} finally {
+					searchInput = null;
+				}
+
+				return;
+			}
+		} catch (error) {
+			pendingLocationJobs = pendingLocationJobs.filter((item) => item.jobId !== jobId);
+			if (activeMapJobId === jobId) {
+				activeMapJobId = null;
+			}
+
+			statusMessage =
+				error instanceof Error ? error.message : 'Unable to monitor that location right now.';
+		} finally {
+			pollingJobIds.delete(jobId);
+		}
+	}
 
 	async function readErrorResponse(response: Response): Promise<ApiErrorResponse> {
 		const fallbackMessage = response.statusText || 'Request failed';
@@ -90,8 +275,11 @@
 		latitude: number;
 		longitude: number;
 	}): Promise<void> {
-		loadingLocation = true;
-		statusMessage = 'Fetching weather data and rebuilding dbt models for the selected location...';
+		submittingLocation = true;
+		searchController?.abort();
+		searchController = null;
+		searchResults = [];
+		statusMessage = `Queueing a background refresh for ${coordinateLabel(coordinates.latitude, coordinates.longitude)}...`;
 
 		try {
 			const response = await fetch('/api/locations', {
@@ -102,34 +290,19 @@
 
 			if (!response.ok) {
 				const failure = await readErrorResponse(response);
-				if (failure.partialSuccess) {
-					searchResults = [];
-					statusMessage = failure.message;
-					return;
-				}
-
 				throw new Error(failure.message);
 			}
 
-			const payload = (await response.json()) as EnsureResponse;
-			statusMessage =
-				payload.location.rowsStored > 0
-					? `Cached ${payload.location.rowsStored} new daily observations for ${payload.location.canonicalName}.`
-					: `${payload.location.canonicalName} is already up to date.`;
-			searchResults = [];
-			searchInput = payload.location.canonicalName;
-			let locationHref = resolve('/');
-			locationHref += `?location=${encodeURIComponent(payload.location.locationKey)}`;
-			try {
-				await goto(locationHref, { invalidateAll: true });
-			} finally {
-				searchInput = null;
-			}
+			const payload = (await response.json()) as EnqueueResponse;
+			activeMapJobId = payload.job.jobId;
+			replacePendingLocationJob(payload.job);
+			statusMessage = queuedLocationMessage(payload.job);
+			void pollLocationJob(payload.job.jobId);
 		} catch (error) {
 			statusMessage =
-				error instanceof Error ? error.message : 'Unable to load that location right now.';
+				error instanceof Error ? error.message : 'Unable to queue that location right now.';
 		} finally {
-			loadingLocation = false;
+			submittingLocation = false;
 		}
 	}
 
@@ -210,8 +383,8 @@
 			</h1>
 			<p class="hero-copy">
 				Search only the locations you have already cached, or click the map to ingest a new one on
-				demand. Every new location is stored locally in DuckDB and rebuilt through dbt before the
-				dashboard refreshes.
+				demand. Every new location is queued, fetched in the background, and folded into the next
+				dbt rebuild before the dashboard refreshes.
 			</p>
 		</div>
 		<div class="hero-meta">
@@ -244,6 +417,7 @@
 			{searchResults}
 			{searchBusy}
 			{statusMessage}
+			pendingLocationJobs={pendingLocationJobCards}
 			onSearchInput={handleSearchInput}
 			onSearchSubmit={submitSearch}
 			onSelectLocation={selectKnownLocation}
@@ -256,7 +430,7 @@
 					<h2>Click the map for a new location</h2>
 				</div>
 			</div>
-			<LocationPickerMap {selectedLocation} onPick={handleMapPick} disabled={loadingLocation} />
+			<LocationPickerMap {selectedLocation} onPick={handleMapPick} disabled={submittingLocation} />
 		</section>
 	</div>
 

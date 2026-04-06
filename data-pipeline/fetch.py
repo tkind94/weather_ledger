@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import time
 import unicodedata
 from dataclasses import asdict, dataclass
@@ -15,10 +16,11 @@ from zoneinfo import ZoneInfo
 import duckdb
 import requests
 
+from storage_paths import resolve_ledger_path, resolve_snapshot_path
+
 OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 OPEN_METEO_GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
-DEFAULT_DATABASE_PATH = Path(__file__).resolve().parent.parent / "database" / "weather.duckdb"
 REQUEST_TIMEOUT_SECONDS = 30
 RETRY_BACKOFF_SECONDS = (1.0, 3.0, 7.0)
 INITIAL_BACKFILL_DAYS = int(os.environ.get("WEATHER_LEDGER_INITIAL_BACKFILL_DAYS", "30"))
@@ -120,10 +122,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timezone")
     parser.add_argument("--json", action="store_true", dest="as_json")
     return parser.parse_args()
-
-
-def resolve_database_path() -> Path:
-    return Path(os.environ.get("WEATHER_LEDGER_DB_PATH", DEFAULT_DATABASE_PATH))
 
 
 def request_json(
@@ -358,12 +356,12 @@ def resolve_requested_location(requested: RequestedLocation) -> ResolvedLocation
     return resolve_location_from_geocoders(requested.latitude, requested.longitude)
 
 
-def table_exists(connection: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+def table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
     result = connection.execute(
         """
         SELECT COUNT(*)
-        FROM information_schema.tables
-        WHERE table_schema = 'main' AND table_name = ?
+        FROM sqlite_master
+        WHERE type = 'table' AND name = ?
         """,
         [table_name],
     ).fetchone()
@@ -371,17 +369,17 @@ def table_exists(connection: duckdb.DuckDBPyConnection, table_name: str) -> bool
 
 
 def table_has_column(
-    connection: duckdb.DuckDBPyConnection,
+    connection: sqlite3.Connection,
     table_name: str,
     column_name: str,
 ) -> bool:
-    # DuckDB PRAGMA table_info does not accept bound parameters, so callers must pass a
-    # trusted internal table name rather than user input.
+    # PRAGMA table_info does not accept bound parameters, so callers must pass a trusted
+    # internal table name rather than user input.
     columns = connection.execute(f"PRAGMA table_info('{table_name}')").fetchall()
     return any(column[1] == column_name for column in columns)
 
 
-def ensure_schema(connection: duckdb.DuckDBPyConnection) -> None:
+def ensure_schema(connection: sqlite3.Connection) -> None:
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS raw_locations (
@@ -423,6 +421,175 @@ def ensure_schema(connection: duckdb.DuckDBPyConnection) -> None:
     )
 
 
+def configure_ledger_connection(connection: sqlite3.Connection) -> None:
+    connection.execute("PRAGMA journal_mode = WAL")
+    connection.execute("PRAGMA busy_timeout = 5000")
+
+
+def ledger_table_has_rows(connection: sqlite3.Connection, table_name: str) -> bool:
+    if not table_exists(connection, table_name):
+        return False
+
+    result = connection.execute(f"SELECT 1 FROM {table_name} LIMIT 1").fetchone()
+    return result is not None
+
+
+def snapshot_table_exists(connection: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+    result = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM information_schema.tables
+        WHERE table_schema = 'main' AND table_name = ?
+        """,
+        [table_name],
+    ).fetchone()
+    return bool(result and result[0])
+
+
+def snapshot_table_has_column(
+    connection: duckdb.DuckDBPyConnection,
+    table_name: str,
+    column_name: str,
+) -> bool:
+    columns = connection.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+    return any(column[1] == column_name for column in columns)
+
+
+def migrate_snapshot_raw_data_to_ledger(
+    connection: sqlite3.Connection,
+    snapshot_path: Path,
+) -> None:
+    if ledger_table_has_rows(connection, "raw_locations") or ledger_table_has_rows(
+        connection, "raw_weather"
+    ):
+        return
+    if not snapshot_path.exists():
+        return
+
+    with duckdb.connect(str(snapshot_path), read_only=True) as snapshot_connection:
+        if not snapshot_table_exists(snapshot_connection, "raw_weather"):
+            return
+
+        LOGGER.info(
+            "Migrating raw weather cache from %s into %s",
+            snapshot_path,
+            resolve_ledger_path(),
+        )
+
+        if snapshot_table_exists(snapshot_connection, "raw_locations"):
+            location_rows = snapshot_connection.execute(
+                """
+                SELECT
+                    location_key,
+                    canonical_name,
+                    admin1,
+                    country,
+                    country_code,
+                    latitude,
+                    longitude,
+                    timezone,
+                    geocode_source,
+                    created_at,
+                    updated_at
+                FROM raw_locations
+                """
+            ).fetchall()
+            if location_rows:
+                connection.executemany(
+                    """
+                    INSERT OR REPLACE INTO raw_locations (
+                        location_key,
+                        canonical_name,
+                        admin1,
+                        country,
+                        country_code,
+                        latitude,
+                        longitude,
+                        timezone,
+                        geocode_source,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    location_rows,
+                )
+
+        if snapshot_table_has_column(snapshot_connection, "raw_weather", "location_key"):
+            weather_rows = snapshot_connection.execute(
+                """
+                SELECT
+                    location_key,
+                    weather_date,
+                    latitude,
+                    longitude,
+                    timezone,
+                    max_temperature_c,
+                    min_temperature_c,
+                    avg_temperature_c,
+                    precipitation_mm,
+                    wind_speed_kph,
+                    wind_gust_kph,
+                    wind_direction_deg,
+                    pressure_hpa,
+                    source,
+                    fetched_at
+                FROM raw_weather
+                """
+            ).fetchall()
+        else:
+            legacy_location = default_legacy_location()
+            timestamp = datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds")
+            upsert_location(connection, legacy_location, timestamp)
+            weather_rows = snapshot_connection.execute(
+                """
+                SELECT
+                    ?,
+                    weather_date,
+                    latitude,
+                    longitude,
+                    timezone,
+                    max_temperature_c,
+                    min_temperature_c,
+                    avg_temperature_c,
+                    precipitation_mm,
+                    wind_speed_kph,
+                    wind_gust_kph,
+                    wind_direction_deg,
+                    pressure_hpa,
+                    source,
+                    fetched_at
+                FROM raw_weather
+                """,
+                [legacy_location.location_key],
+            ).fetchall()
+
+        if weather_rows:
+            connection.executemany(
+                """
+                INSERT OR REPLACE INTO raw_weather (
+                    location_key,
+                    weather_date,
+                    latitude,
+                    longitude,
+                    timezone,
+                    max_temperature_c,
+                    min_temperature_c,
+                    avg_temperature_c,
+                    precipitation_mm,
+                    wind_speed_kph,
+                    wind_gust_kph,
+                    wind_direction_deg,
+                    pressure_hpa,
+                    source,
+                    fetched_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                weather_rows,
+            )
+
+
 def default_legacy_location() -> ResolvedLocation:
     return ResolvedLocation(
         location_key=DEFAULT_LOCATION_KEY,
@@ -437,7 +604,7 @@ def default_legacy_location() -> ResolvedLocation:
     )
 
 
-def migrate_legacy_schema(connection: duckdb.DuckDBPyConnection) -> None:
+def migrate_legacy_schema(connection: sqlite3.Connection) -> None:
     if not table_exists(connection, "raw_weather"):
         return
     if table_has_column(connection, "raw_weather", "location_key"):
@@ -493,7 +660,7 @@ def migrate_legacy_schema(connection: duckdb.DuckDBPyConnection) -> None:
 
 
 def load_existing_location(
-    connection: duckdb.DuckDBPyConnection,
+    connection: sqlite3.Connection,
     location_key: str,
 ) -> ResolvedLocation | None:
     row = connection.execute(
@@ -530,7 +697,7 @@ def load_existing_location(
 
 
 def upsert_location(
-    connection: duckdb.DuckDBPyConnection,
+    connection: sqlite3.Connection,
     location: ResolvedLocation,
     timestamp: str,
 ) -> None:
@@ -586,7 +753,7 @@ def parse_sql_date(value: object) -> date | None:
 
 
 def resolve_date_window(
-    connection: duckdb.DuckDBPyConnection,
+    connection: sqlite3.Connection,
     location: ResolvedLocation,
 ) -> FetchWindow | None:
     today = datetime.now(ZoneInfo(location.timezone)).date()
@@ -714,7 +881,7 @@ def fetch_history(
 
 
 def store_history(
-    connection: duckdb.DuckDBPyConnection,
+    connection: sqlite3.Connection,
     rows: list[WeatherDay],
 ) -> None:
     if not rows:
@@ -765,12 +932,15 @@ def store_history(
 
 
 def ensure_location_data(requested: RequestedLocation) -> IngestionResult:
-    database_path = resolve_database_path()
-    database_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path = resolve_ledger_path()
+    snapshot_path = resolve_snapshot_path()
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with duckdb.connect(str(database_path)) as connection:
+    with sqlite3.connect(ledger_path) as connection:
+        configure_ledger_connection(connection)
         ensure_schema(connection)
         migrate_legacy_schema(connection)
+        migrate_snapshot_raw_data_to_ledger(connection, snapshot_path)
 
         if requested.location_key:
             existing_by_key = load_existing_location(connection, requested.location_key)
@@ -821,7 +991,7 @@ def main() -> None:
         timezone=args.timezone,
     )
     result = ensure_location_data(requested)
-    database_path = resolve_database_path()
+    database_path = resolve_ledger_path()
 
     if args.as_json:
         print(json.dumps(as_frontend_payload(result)))
