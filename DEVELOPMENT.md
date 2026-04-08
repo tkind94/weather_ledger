@@ -7,17 +7,15 @@ This file is for humans working in the repo. It consolidates the commands and co
 Run this before asking someone else to review your branch:
 
 ```sh
-./scripts/validate.sh
+just validate
 ```
 
 Equivalent manual commands:
 
 ```sh
-cd data-pipeline && uv run python fetch.py
-cd data-pipeline && uv run python build_snapshot.py
-cd data-pipeline && DBT_PROFILES_DIR="$PWD/.dbt" uv run dbt build
+cd frontend && bun run lint
 cd frontend && bun run check
-cd frontend && bun run test:unit -- --run
+cd frontend && bun run test:unit
 cd frontend && bun run build
 cd .. && docker compose config
 ```
@@ -27,43 +25,35 @@ cd .. && docker compose config
 Install everything needed for local development:
 
 ```sh
-./scripts/setup-local.sh
+just setup
 ```
 
-This does three things:
-
-- syncs the Python environment with `uv`
-- installs frontend dependencies with Bun
-- installs Playwright Chromium for browser-backed tests
+That installs frontend dependencies with Bun and refreshes local hooks via `prek`.
 
 ## Cleanup generated output
 
 Use this when you want a clean local worktree without generated artifacts:
 
 ```sh
-./scripts/clean.sh
+just clean
 ```
 
-That removes the generated DuckDB file, dbt target output, dbt logs, and frontend build output.
+That removes the generated SQLite file plus the frontend build output.
 
 ## Conventions
 
-- Use Bun for Node and TypeScript dependencies and scripts.
-- Use `uv` for Python dependency management and execution.
-- Mutable ingestion state lives in `database/weather.sqlite3`.
-- The published frontend/dbt snapshot lives in `database/weather.duckdb`.
-- Background map-add jobs live in `database/weather.jobs.sqlite3` by default.
-- Keep DuckDB access in server-only frontend modules.
-- Validate ingestion before changing frontend data contracts.
+- Use Bun for all Node and TypeScript dependencies and scripts.
+- Keep Open-Meteo calls inside Next.js route handlers or server helpers.
+- Keep SQLite access in server-only modules under `frontend/src/lib/server/`.
+- Use client components only for search, navigation, or other browser interactions.
+- Keep the dashboard page itself server-rendered.
 
 ## Environment Variables
 
-- `DBT_PROFILES_DIR`: points dbt at `data-pipeline/.dbt`
-- `DBT_DUCKDB_PATH`: overrides the DuckDB file path for dbt
-- `WEATHER_LEDGER_DB_PATH`: overrides the DuckDB file path for the frontend server
-- `WEATHER_LEDGER_LEDGER_PATH`: overrides the SQLite ledger path for ingestion
-- `WEATHER_LEDGER_JOB_DB_PATH`: overrides the SQLite queue path for background location jobs
-- `CLOUDFLARE_TUNNEL_TOKEN`: enables the optional tunnel container
+- `WEATHER_LEDGER_SQLITE_PATH`: overrides the SQLite file path.
+- `WEATHER_LEDGER_HISTORY_START`: earliest date fetched for a new location.
+- `WEATHER_LEDGER_DEFAULT_LOCATION_*`: overrides the default seeded location.
+- `CLOUDFLARE_TUNNEL_TOKEN`: enables the optional tunnel container.
 
 ## Running The App
 
@@ -87,14 +77,12 @@ docker compose --profile tunnel up --build
 
 ## If You Are Looking For The Important Code
 
-Ignore generated output first. The files most people actually need are:
-
-- `data-pipeline/fetch.py`
-- `data-pipeline/models/`
-- `frontend/src/routes/+page.server.ts`
-- `frontend/src/routes/+page.svelte`
+- `frontend/src/app/page.tsx`
+- `frontend/src/app/api/locations/route.ts`
+- `frontend/src/app/api/locations/search/route.ts`
 - `frontend/src/lib/server/weather.ts`
-- `docker-compose.yml`
+- `frontend/src/lib/server/open-meteo.ts`
+- `frontend/src/lib/server/sqlite.ts`
 
 ## CI
 

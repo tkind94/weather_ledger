@@ -2,49 +2,31 @@
 
 - **Language**: TypeScript
 - **Package Manager**: `bun` — NEVER use `npm`, `npx`, `yarn`, or `pnpm`
-- **Add-ons**: prettier, eslint, vitest, playwright, tailwindcss, sveltekit-adapter, mcp
+- **Framework**: Next.js App Router with React 19
+- **Storage**: local SQLite via `better-sqlite3`
 
 ## Commands
 
 ```sh
-bun run dev          # dev server
-bun run build        # production build → build/
-bun run preview      # run built server (bun ./build/index.js), port via PORT env var
-bun run check        # svelte-check + tsc
-bun run test:unit -- --run   # vitest (non-watch)
-bun run test:e2e     # playwright (builds first; requires port 4173 free)
+bun run dev
+bun run build
+bun run start
+bun run check
+bun run lint
+bun run test:unit
 ```
 
-## E2E tests
+## Runtime notes
 
-`playwright.config.ts` prepares `/tmp/weather-ledger-test.duckdb` via
-`tests/e2e/prepare_preview_db.py` before the preview server starts.
-`tests/e2e/test-db.ts` is the shared path constant used by the Playwright config.
-The preview server is started with `PORT=4173` and `WEATHER_LEDGER_DB_PATH` pointed at the
-seeded test database. Do not point tests at the production DB.
+- The app caches data in `../database/weather.sqlite3` by default.
+- Override that path with `WEATHER_LEDGER_SQLITE_PATH`.
+- Open-Meteo calls happen only inside `src/app/api/**` route handlers and server-side helpers.
+- The dashboard should stay server-rendered for data reads; client components should handle only search and navigation interactions.
 
----
+## Start here
 
-You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
-
-## Available MCP Tools:
-
-### 1. list-sections
-
-Use this FIRST to discover all available documentation sections. Returns a structured list with titles, use_cases, and paths.
-When asked about Svelte or SvelteKit topics, ALWAYS use this tool at the start of the chat to find relevant sections.
-
-### 2. get-documentation
-
-Retrieves full documentation content for specific sections. Accepts single or multiple sections.
-After calling the list-sections tool, you MUST analyze the returned documentation sections (especially the use_cases field) and then use the get-documentation tool to fetch ALL documentation sections that are relevant for the user's task.
-
-### 3. svelte-autofixer
-
-Analyzes Svelte code and returns issues and suggestions.
-You MUST use this tool whenever writing Svelte code before sending it to the user. Keep calling it until no issues or suggestions are returned.
-
-### 4. playground-link
-
-Generates a Svelte Playground link with the provided code.
-After completing the code, ask the user if they want a playground link. Only call this tool after user confirmation and NEVER if code was written to files in their project.
+- `src/app/page.tsx`
+- `src/components/location-search-panel.tsx`
+- `src/lib/server/weather.ts`
+- `src/lib/server/open-meteo.ts`
+- `src/lib/server/sqlite.ts`

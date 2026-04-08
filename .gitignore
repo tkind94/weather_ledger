@@ -4,22 +4,12 @@
 !.env.example
 
 # Shared generated database
-database/*.duckdb
-database/*.duckdb-*
 database/*.wal
 database/*.sqlite3
 
-# Python and dbt outputs
-data-pipeline/.venv/
-data-pipeline/.pytest_cache/
-data-pipeline/.dbt/.user.yml
-data-pipeline/dbt_packages/
-data-pipeline/logs/
-data-pipeline/target/
-
 # Frontend outputs
 frontend/node_modules/
-frontend/.svelte-kit/
+frontend/.next/
 frontend/build/
 frontend/playwright-report/
 frontend/test-results/

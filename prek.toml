@@ -8,7 +8,9 @@ hooks = [
     { id = "trailing-whitespace" },
     { id = "end-of-file-fixer" },
     { id = "check-merge-conflict" },
-    { id = "check-added-large-files", args = ["--maxkb=500"] },
+    { id = "check-added-large-files", args = [
+        "--maxkb=500",
+    ] },
 ]
 
 [[repos]]
@@ -24,26 +26,17 @@ always_run = true
 stages = ["pre-commit"]
 
 [[repos.hooks]]
-id = "fmt-python"
-name = "ruff format (write)"
+id = "lint-frontend"
+name = "frontend lint"
 language = "system"
-entry = "just fmt-python"
-pass_filenames = false
-always_run = true
-stages = ["pre-commit"]
-
-[[repos.hooks]]
-id = "lint-python"
-name = "ruff check"
-language = "system"
-entry = "just lint-python"
+entry = "just lint-frontend"
 pass_filenames = false
 always_run = true
 stages = ["pre-commit"]
 
 [[repos.hooks]]
 id = "check-frontend"
-name = "svelte-check"
+name = "frontend typecheck"
 language = "system"
 entry = "just check-frontend"
 pass_filenames = false
@@ -52,7 +45,7 @@ stages = ["pre-commit"]
 
 [[repos.hooks]]
 id = "test-unit"
-name = "vitest"
+name = "frontend unit tests"
 language = "system"
 entry = "just test-unit"
 pass_filenames = false

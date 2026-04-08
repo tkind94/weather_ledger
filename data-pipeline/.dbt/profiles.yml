@@ -1,7 +1,0 @@
-weather_transform:
-  outputs:
-    dev:
-      type: duckdb
-      path: "{{ env_var('DBT_DUCKDB_PATH', '../database/weather.duckdb') }}"
-      threads: 4
-  target: dev

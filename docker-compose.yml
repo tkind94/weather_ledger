@@ -1,38 +1,12 @@
 services:
-  weather-fetcher:
-    build:
-      context: .
-      dockerfile: data-pipeline/Dockerfile
-    working_dir: /app/data-pipeline
-    environment:
-      TZ: America/Denver
-      DBT_PROFILES_DIR: /app/data-pipeline/.dbt
-      WEATHER_LEDGER_DB_PATH: /app/database/weather.duckdb
-      WEATHER_LEDGER_LEDGER_PATH: /app/database/weather.sqlite3
-      DBT_DUCKDB_PATH: /app/database/weather.duckdb
-    volumes:
-      - ./database:/app/database
-    healthcheck:
-      test: ["CMD", "test", "-f", "/tmp/weather-bootstrap-complete"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
-    restart: unless-stopped
-
   frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
     working_dir: /app/frontend
     environment:
-      HOST: 0.0.0.0
       PORT: 3000
-      WEATHER_LEDGER_DB_PATH: /app/database/weather.duckdb
-      WEATHER_LEDGER_LEDGER_PATH: /app/database/weather.sqlite3
-    depends_on:
-      weather-fetcher:
-        condition: service_healthy
+      WEATHER_LEDGER_SQLITE_PATH: /app/database/weather.sqlite3
     volumes:
       - ./database:/app/database
     ports:

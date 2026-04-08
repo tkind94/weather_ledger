@@ -1,12 +1,13 @@
 node_modules
 
 # Output
+.next
+out
 .output
 .vercel
 .netlify
 .wrangler
-/.svelte-kit
-/build
+*.tsbuildinfo
 
 # OS
 .DS_Store
@@ -18,10 +19,5 @@ Thumbs.db
 !.env.example
 !.env.test
 
-# Vite
-vite.config.js.timestamp-*
-vite.config.ts.timestamp-*
-# Playwright
-test-results
-# Cloudflare Types
-/worker-configuration.d.ts
+# Test output
+coverage

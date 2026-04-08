@@ -6,21 +6,17 @@ set dotenv-load := false
 # ─── Lint ───────────────────────────────────────────────
 
 [group('lint')]
-lint: lint-frontend lint-python
+lint: lint-frontend
     @echo "All linting passed."
 
 [group('lint')]
 lint-frontend:
     cd frontend && bun run lint
 
-[group('lint')]
-lint-python:
-    cd data-pipeline && uv run ruff check .
-
 # ─── Format ─────────────────────────────────────────────
 
 [group('format')]
-fmt: fmt-frontend fmt-python
+fmt: fmt-frontend
     @echo "All formatting applied."
 
 [group('format')]
@@ -28,20 +24,12 @@ fmt-frontend:
     cd frontend && bun run format
 
 [group('format')]
-fmt-python:
-    cd data-pipeline && uv run ruff format .
-
-[group('format')]
-fmt-check: fmt-check-frontend fmt-check-python
+fmt-check: fmt-check-frontend
     @echo "All format checks passed."
 
 [group('format')]
 fmt-check-frontend:
     cd frontend && bunx prettier --check .
-
-[group('format')]
-fmt-check-python:
-    cd data-pipeline && uv run ruff format --check .
 
 # ─── Type Check ─────────────────────────────────────────
 
@@ -56,24 +44,12 @@ check-frontend:
 # ─── Test ────────────────────────────────────────────────
 
 [group('test')]
-test: test-unit test-e2e
+test: test-unit
     @echo "All tests passed."
 
 [group('test')]
 test-unit:
-    cd frontend && bun run test:unit -- --run
-
-[group('test')]
-test-e2e:
-    cd frontend && bun run test:e2e
-
-[group('test')]
-test-journeys:
-    cd frontend && CI=1 bun run test:e2e
-
-[group('test')]
-repro-location-lock:
-    cd frontend && bun run test:unit -- --run src/lib/server/location-pipeline.spec.ts
+    cd frontend && bun run test:unit
 
 # ─── Run ─────────────────────────────────────────────────
 
@@ -82,28 +58,14 @@ dev:
     cd frontend && bun run dev
 
 [group('run')]
-preview: build
-    cd frontend && bun run preview
+start: build
+    cd frontend && bun run start
 
 # ─── Build ───────────────────────────────────────────────
 
 [group('build')]
 build:
     cd frontend && bun run build
-
-# ─── Data Pipeline ───────────────────────────────────────
-
-[group('data')]
-fetch:
-    cd data-pipeline && uv run python fetch.py
-
-[group('data')]
-dbt:
-    cd data-pipeline && DBT_PROFILES_DIR="$PWD/.dbt" uv run dbt build
-
-[group('data')]
-pipeline: fetch dbt
-    @echo "Data pipeline complete."
 
 # ─── Review (full QC) ───────────────────────────────────
 
@@ -115,22 +77,17 @@ review: lint check test-unit build
 
 [group('setup')]
 setup:
-    cd data-pipeline && uv sync
     cd frontend && bun install
-    cd frontend && bunx playwright install chromium
     prek install
     @echo "Local setup complete. Pre-commit hooks installed."
 
 [group('setup')]
 clean:
-    rm -rf data-pipeline/target data-pipeline/logs
-    rm -f data-pipeline/.dbt/.user.yml
-    rm -rf frontend/build frontend/.svelte-kit
-    rm -rf frontend/playwright-report frontend/test-results
-    rm -f database/weather.duckdb
+    rm -rf frontend/.next frontend/build frontend/test-results
+    rm -f database/weather.sqlite3
     @echo "Generated output removed."
 
 [group('setup')]
-validate: pipeline check test-unit build
+validate: lint check test-unit build
     docker compose config > /dev/null
     @echo "Full validation complete."

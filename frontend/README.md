@@ -1,31 +1,30 @@
 # Weather Ledger Frontend
 
-This SvelteKit app runs on Bun with the Node adapter so it can query the shared DuckDB file directly from server load functions and queue on-demand fetch plus dbt rebuild work for new map-selected locations.
+This frontend is a Next.js App Router application on Bun. It talks directly to Open-Meteo from server route handlers, persists cached locations plus daily observations in a local SQLite file, and renders the dashboard with React server components.
 
 ## Commands
 
 ```sh
+bun install
 bun run dev
 bun run check
-bun run test
+bun run lint
+bun run test:unit
 bun run build
-bun run preview
+bun run start
 ```
 
-## Database contract
+## Runtime contract
 
-The server reads from `../database/weather.duckdb` and expects the dbt-built `weather_daily_history`, `location_catalog`, `weather_monthly_extremes`, and `dashboard_summary` tables.
-Map clicks enqueue background jobs in `../database/weather.jobs.sqlite3` by default.
-Set `WEATHER_LEDGER_DB_PATH` if you want to run the built server from a different working directory.
-Set `WEATHER_LEDGER_JOB_DB_PATH` if you need the background job queue stored elsewhere.
+- SQLite lives at `../database/weather.sqlite3` by default.
+- Override the database path with `WEATHER_LEDGER_SQLITE_PATH`.
+- The first request seeds the database with the default location if the cache is empty.
 
-## Start Here
+## Key files
 
-If you are trying to understand the app, read these files first:
-
-- `src/routes/+page.server.ts`
+- `src/app/page.tsx`
+- `src/app/api/locations/route.ts`
+- `src/app/api/locations/search/route.ts`
 - `src/lib/server/weather.ts`
-- `src/lib/server/location-pipeline.ts`
-- `src/routes/+page.svelte`
-- `src/lib/components/LocationPickerMap.svelte`
-- `src/lib/components/WeatherHistoryChart.svelte`
+- `src/lib/server/open-meteo.ts`
+- `src/lib/server/sqlite.ts`

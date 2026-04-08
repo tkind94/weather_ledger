@@ -2,94 +2,78 @@
 
 ## Toolchain (strict)
 
-| Layer | Tool | NEVER use |
-|-------|------|-----------|
+| Layer             | Tool  | NEVER use                    |
+| ----------------- | ----- | ---------------------------- |
 | Node / TypeScript | `bun` | `npm`, `npx`, `yarn`, `pnpm` |
-| Python | `uv run` | `python`, `pip`, `pipenv` |
-| dbt | `uv run dbt` | `dbt` directly (outside uv) |
 
-Every command that touches the frontend must go through `bun`. Every command that touches
-`data-pipeline/` must go through `uv run`. Violations will silently use the wrong lockfile
-or binary and are the root cause of past "npm vs bun" config bugs.
+Every command that touches the frontend must go through `bun`. There is no Python, dbt,
+or DuckDB runtime left in this repo.
 
 ## Test commands
 
 ```sh
-# Frontend unit + component
-cd frontend && bun run test:unit -- --run
+# Frontend unit tests
+cd frontend && bun run test:unit
 
-# Frontend e2e (builds first, requires no process on port 4173)
-cd frontend && bun run test:e2e
-
-# Full frontend check
+# Frontend typecheck
 cd frontend && bun run check
 
-# Data pipeline
-cd data-pipeline && uv run python fetch.py
-cd data-pipeline && DBT_PROFILES_DIR="$PWD/.dbt" uv run dbt build
+# Frontend lint
+cd frontend && bun run lint
+
+# Frontend build
+cd frontend && bun run build
 ```
-
-## E2E test setup
-
-Playwright e2e tests require a seeded DuckDB. `tests/e2e/global-setup.ts` creates
-`/tmp/weather-ledger-test.duckdb` and sets `WEATHER_LEDGER_DB_PATH` before the preview
-server starts. Do not replace this with mocks or a live production DB. The preview server
-runs on port 4173 via `PORT=4173` in `playwright.config.ts`.
 
 ## Environment variables
 
-- `WEATHER_LEDGER_DB_PATH` — overrides the DuckDB path for the frontend server
-- `DBT_PROFILES_DIR` — points dbt at `data-pipeline/.dbt`
-- `DBT_DUCKDB_PATH` — overrides the DuckDB path for dbt
-- `PORT` — controls the adapter-node listen port (default 3000; e2e tests use 4173)
+- `WEATHER_LEDGER_SQLITE_PATH` — overrides the SQLite path for the frontend server
+- `WEATHER_LEDGER_HISTORY_START` — earliest date fetched for a newly cached location
+- `WEATHER_LEDGER_DEFAULT_LOCATION_*` — overrides the seeded default location
+- `PORT` — controls the Next.js port (default 3000)
 
 ## Architecture rules
 
 ### Data flow
 
 ```
-Open-Meteo API → fetch.py → raw_weather (DuckDB)
-                                ↓
-              weather_monthly_extremes   dashboard_summary (dbt tables)
-                                              ↓
-                                    SvelteKit server load → page
+Open-Meteo API → Next.js route handler → SQLite cache
+                                          ↓
+                             React server component page
 ```
 
-- `fetch.py` **upserts** (INSERT OR REPLACE). It never drops or recreates tables.
-  History accumulates across runs — this is a ledger.
-- `fetch.py` owns the schema (`CREATE TABLE IF NOT EXISTS`). Types are enforced at
-  the boundary — no staging view needed.
-- All aggregation and transformation happens in **dbt models**, not in the frontend.
-  The Svelte page is purely presentational — no `.reduce()`, no client-side computation.
-- The frontend opens **one DuckDB connection per request** and runs both queries against it.
+- Route handlers fetch remote data and server helpers write it straight into SQLite.
+- SQLite owns the persisted schema. Use `CREATE TABLE IF NOT EXISTS` and upserts.
+- Server modules under `frontend/src/lib/server/` own persistence and read models.
+- The dashboard page stays server-rendered. Client components are only for search and navigation.
 
 ### What goes where
 
-| Concern | Where | NOT here |
-|---------|-------|----------|
-| Aggregation (sum, avg, max) | dbt model | Svelte `$derived`, JS `.reduce()` |
-| Type casting | `fetch.py` (`CREATE TABLE`) | Column types enforced at ingestion |
-| Display formatting (`.toFixed`) | Svelte template | dbt SQL |
-| camelCase aliasing | frontend SQL query | dbt model column names |
+| Concern                 | Where                                                                     | NOT here          |
+| ----------------------- | ------------------------------------------------------------------------- | ----------------- |
+| Remote HTTP calls       | `frontend/src/app/api/**`, `frontend/src/lib/server/open-meteo.ts`        | client components |
+| Persistence             | `frontend/src/lib/server/sqlite.ts`, `frontend/src/lib/server/weather.ts` | route files       |
+| Aggregation and shaping | server helpers                                                            | client components |
+| Display formatting      | React components                                                          | SQLite schema     |
 
 ### Frontend types
 
-- Types in `$lib/weather.ts` must match what the SQL query returns — no extra fields.
+- Types in `frontend/src/lib/weather.ts` must match what the server returns — no extra fields.
 - All types use **camelCase**. The SQL query aliases handle `snake_case` → `camelCase`.
 - Query only the columns the UI renders. Do not `SELECT *`.
 
 ## Project structure
 
 ```
-data-pipeline/   Python ingestion + dbt transformation
-frontend/        SvelteKit app (Bun + TypeScript)
-database/        Shared weather.duckdb (gitignored)
+frontend/        Next.js app (Bun + TypeScript)
+database/        Shared weather.sqlite3 (gitignored)
 docker-compose.yml
 ```
 
 Key files most likely to need editing:
-- `data-pipeline/fetch.py`
-- `data-pipeline/models/marts/`
+
 - `frontend/src/lib/server/weather.ts`
-- `frontend/src/routes/+page.server.ts`
-- `frontend/src/routes/+page.svelte`
+- `frontend/src/lib/server/open-meteo.ts`
+- `frontend/src/lib/server/sqlite.ts`
+- `frontend/src/app/page.tsx`
+- `frontend/src/components/location-search-panel.tsx`
