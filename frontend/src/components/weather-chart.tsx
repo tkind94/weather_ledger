@@ -41,9 +41,9 @@ export function WeatherChart({ observations }: Props): ReactNode {
 		...recentObservations.map((observation) => observation.minTemperature)
 	);
 	const maxPrecipitation = Math.max(
-		0.1,
 		...recentObservations.map((observation) => observation.precipitation)
 	);
+	const maxPrecipitationWithFloor = Math.max(0.1, maxPrecipitation);
 	const temperatureRange = Math.max(1, maxTemperature - minTemperature);
 	const step = innerWidth / Math.max(1, recentObservations.length - 1);
 
@@ -51,6 +51,15 @@ export function WeatherChart({ observations }: Props): ReactNode {
 		.map((observation, index) => {
 			const x = padding.left + index * step;
 			const normalized = (observation.maxTemperature - minTemperature) / temperatureRange;
+			const y = padding.top + innerHeight - normalized * innerHeight;
+			return `${x},${y}`;
+		})
+		.join(' ');
+
+	const minLinePoints = recentObservations
+		.map((observation, index) => {
+			const x = padding.left + index * step;
+			const normalized = (observation.minTemperature - minTemperature) / temperatureRange;
 			const y = padding.top + innerHeight - normalized * innerHeight;
 			return `${x},${y}`;
 		})
@@ -65,7 +74,10 @@ export function WeatherChart({ observations }: Props): ReactNode {
 				</div>
 				<div className={styles.legend}>
 					<span className={styles.legendItem}>
-						<span className={styles.legendLine} /> Max temperature
+						<span className={styles.legendLine} /> High
+					</span>
+					<span className={styles.legendItem}>
+						<span className={styles.legendLineLow} /> Low
 					</span>
 					<span className={styles.legendItem}>
 						<span className={styles.legendBar} /> Precipitation
@@ -74,15 +86,21 @@ export function WeatherChart({ observations }: Props): ReactNode {
 			</header>
 
 			<div className={styles.chartShell}>
-				<svg className={styles.chart} viewBox={`0 0 ${width} ${height}`} role="img">
+				<svg
+					className={styles.chart}
+					viewBox={`0 0 ${width} ${height}`}
+					role="img"
+					aria-label="Weather history chart for the latest sixty cached days"
+				>
 					<title>Weather history chart for the latest sixty cached days</title>
 					{recentObservations.map((observation, index) => {
 						const x = padding.left + index * step;
-						const barHeight = (observation.precipitation / maxPrecipitation) * innerHeight;
+						const barHeight = (observation.precipitation / maxPrecipitationWithFloor) * innerHeight;
 						const barWidth = Math.max(4, step * 0.42);
 						return (
 							<rect
-								fill="rgba(31, 143, 131, 0.24)"
+								fill="var(--accent)"
+								fillOpacity="0.24"
 								height={barHeight}
 								key={observation.weatherDate}
 								rx={4}
@@ -95,7 +113,15 @@ export function WeatherChart({ observations }: Props): ReactNode {
 					<polyline
 						fill="none"
 						points={linePoints}
-						stroke="#f5853f"
+						stroke="var(--accent-warm)"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+						strokeWidth="4"
+					/>
+					<polyline
+						fill="none"
+						points={minLinePoints}
+						stroke="#3f9af5"
 						strokeLinecap="round"
 						strokeLinejoin="round"
 						strokeWidth="4"
@@ -109,8 +135,10 @@ export function WeatherChart({ observations }: Props): ReactNode {
 					{formatDate(recentObservations.at(-1)?.weatherDate ?? null)}
 				</p>
 				<p>
-					Peak {formatTemperature(maxTemperature)} · Wettest day{' '}
-					{formatPrecipitation(maxPrecipitation)}
+					Peak {formatTemperature(maxTemperature)} ·{' '}
+					{maxPrecipitation === 0
+						? 'No precipitation'
+						: `Wettest day ${formatPrecipitation(maxPrecipitation)}`}
 				</p>
 			</footer>
 		</section>

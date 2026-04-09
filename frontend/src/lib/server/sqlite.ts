@@ -7,8 +7,6 @@ import Database from 'better-sqlite3';
 
 import { resolveSQLitePath } from '@/lib/server/config';
 
-let database: Database.Database | null = null;
-
 function createDatabase(): Database.Database {
 	const databasePath = resolveSQLitePath();
 	mkdirSync(dirname(databasePath), { recursive: true });
@@ -48,10 +46,18 @@ function createDatabase(): Database.Database {
 	return connection;
 }
 
-export function getDatabase(): Database.Database {
-	if (database === null) {
-		database = createDatabase();
-	}
+const readDatabase = (() => {
+	let connection: Database.Database | null = null;
 
-	return database;
+	return (): Database.Database => {
+		if (connection === null) {
+			connection = createDatabase();
+		}
+
+		return connection;
+	};
+})();
+
+export function getDatabase(): Database.Database {
+	return readDatabase();
 }

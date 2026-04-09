@@ -20,14 +20,44 @@ type GeocodingResponse = {
 	results?: GeocodingResult[];
 };
 
-type ArchiveResponse = {
-	daily?: {
-		time: string[];
-		temperature_2m_max: number[];
-		temperature_2m_min: number[];
-		precipitation_sum: number[];
-	};
+type ArchiveDaily = {
+	time: string[];
+	temperature_2m_max: Array<number | null>;
+	temperature_2m_min: Array<number | null>;
+	precipitation_sum: Array<number | null>;
 };
+
+type ArchiveResponse = {
+	daily?: ArchiveDaily;
+};
+
+export function observationsFromArchiveDaily(daily: ArchiveDaily): WeatherObservation[] {
+	const observations: WeatherObservation[] = [];
+	for (let index = 0; index < daily.time.length; index += 1) {
+		const maxTemperature = daily.temperature_2m_max[index];
+		const minTemperature = daily.temperature_2m_min[index];
+		if (maxTemperature == null || minTemperature == null) {
+			continue;
+		}
+
+		observations.push({
+			weatherDate: daily.time[index],
+			maxTemperature,
+			minTemperature,
+			precipitation: daily.precipitation_sum[index] ?? 0
+		});
+	}
+
+	return observations;
+}
+
+export function observationsFromArchiveResponse(payload: ArchiveResponse): WeatherObservation[] {
+	if (!('daily' in payload) || payload.daily == null) {
+		throw new Error('Open-Meteo archive response did not include daily observations.');
+	}
+
+	return observationsFromArchiveDaily(payload.daily);
+}
 
 export async function searchRemoteLocations(query: string): Promise<LocationSeed[]> {
 	const url = new URL('https://geocoding-api.open-meteo.com/v1/search');
@@ -88,15 +118,5 @@ export async function fetchLocationWeather(
 	}
 
 	const payload = (await response.json()) as ArchiveResponse;
-	const daily = payload.daily;
-	if (!daily) {
-		return [];
-	}
-
-	return daily.time.map((weatherDate, index) => ({
-		weatherDate,
-		maxTemperature: daily.temperature_2m_max[index] ?? 0,
-		minTemperature: daily.temperature_2m_min[index] ?? 0,
-		precipitation: daily.precipitation_sum[index] ?? 0
-	}));
+	return observationsFromArchiveResponse(payload);
 }

@@ -47,7 +47,8 @@
 .table {
 	width: 100%;
 	border-collapse: collapse;
-	min-width: 560px;
+	table-layout: fixed;
+	word-break: break-word;
 }
 
 .table th,

@@ -23,7 +23,9 @@ export function ObservationTable({ observations }: Props): ReactNode {
 					<p className={styles.eyebrow}>Ledger</p>
 					<h3 className={styles.title}>Latest cached observations</h3>
 				</div>
-				<p className={styles.copy}>Showing the most recent 28 days stored in SQLite.</p>
+				<p className={styles.copy}>
+					Showing the most recent {recent.length} days stored in SQLite.
+				</p>
 			</header>
 
 			<div className={styles.tableWrap}>
@@ -37,14 +39,22 @@ export function ObservationTable({ observations }: Props): ReactNode {
 						</tr>
 					</thead>
 					<tbody>
-						{recent.map((observation) => (
-							<tr key={observation.weatherDate}>
-								<td>{formatDate(observation.weatherDate)}</td>
-								<td>{formatTemperature(observation.maxTemperature)}</td>
-								<td>{formatTemperature(observation.minTemperature)}</td>
-								<td>{formatPrecipitation(observation.precipitation)}</td>
+						{recent.length === 0 ? (
+							<tr>
+								<td colSpan={4} style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>
+									No data available
+								</td>
 							</tr>
-						))}
+						) : (
+							recent.map((observation) => (
+								<tr key={observation.weatherDate}>
+									<td>{formatDate(observation.weatherDate)}</td>
+									<td>{formatTemperature(observation.maxTemperature)}</td>
+									<td>{formatTemperature(observation.minTemperature)}</td>
+									<td>{formatPrecipitation(observation.precipitation)}</td>
+								</tr>
+							))
+						)}
 					</tbody>
 				</table>
 			</div>

@@ -4,6 +4,8 @@ import { defaultLocation, historyStartDate } from '@/lib/server/config';
 import { fetchLocationWeather, searchRemoteLocations } from '@/lib/server/open-meteo';
 import { getDatabase } from '@/lib/server/sqlite';
 import {
+	canonicalizeLocationSeed,
+	coordinateCacheKey,
 	buildLocationLabel,
 	summarizeObservations,
 	type DashboardData,
@@ -82,9 +84,22 @@ function cachedLocationRows(whereClause = '', params: unknown[] = []): LocationR
 	const suffix = whereClause === '' ? '' : ` ${whereClause}`;
 	const query = `${locationSelect}${suffix}
 	GROUP BY l.location_key
-	ORDER BY datetime(l.last_fetched_at) DESC, l.display_name ASC`;
+	ORDER BY datetime(l.last_fetched_at) DESC, l.name ASC, l.admin1 ASC, l.country ASC`;
 	const rows = database.prepare(query).all(...params) as LocationRow[];
 	return rows.map(mapLocation);
+}
+
+function cachedLocationByCoordinates(latitude: number, longitude: number): LocationRecord | null {
+	const [roundedLatitude, roundedLongitude] = coordinateCacheKey(latitude, longitude)
+		.split(',')
+		.map(Number);
+
+	return (
+		cachedLocationRows('WHERE ROUND(l.latitude, 4) = ? AND ROUND(l.longitude, 4) = ?', [
+			roundedLatitude,
+			roundedLongitude
+		]).at(0) ?? null
+	);
 }
 
 function latestObservationDate(locationKey: string): string | null {
@@ -173,7 +188,7 @@ function writeLocationWeather(
 function toCandidate(location: LocationRecord, isCached: boolean): LocationCandidate {
 	return {
 		locationKey: location.locationKey,
-		displayName: location.displayName,
+		displayName: buildLocationLabel(location),
 		name: location.name,
 		admin1: location.admin1,
 		country: location.country,
@@ -199,47 +214,52 @@ export function searchCachedLocations(query: string, limit = 5): LocationRecord[
 
 	const normalizedLimit = Math.max(1, Math.trunc(limit));
 	const database = getDatabase();
+	const pattern = `%${escapeLikePattern(query)}%`;
 	const rows = database
 		.prepare(
 			`${locationSelect}
-			WHERE lower(l.display_name) LIKE ? ESCAPE '\\'
+			WHERE lower(l.name) LIKE ? ESCAPE '\\'
+				OR lower(COALESCE(l.admin1, '')) LIKE ? ESCAPE '\\'
+				OR lower(COALESCE(l.country, '')) LIKE ? ESCAPE '\\'
+				OR lower(l.display_name) LIKE ? ESCAPE '\\'
 			GROUP BY l.location_key
-			ORDER BY datetime(l.last_fetched_at) DESC, l.display_name ASC
+			ORDER BY datetime(l.last_fetched_at) DESC, l.name ASC, l.admin1 ASC, l.country ASC
 			LIMIT ${normalizedLimit}`
 		)
-		.all(`%${escapeLikePattern(query)}%`) as LocationRow[];
+		.all(pattern, pattern, pattern, pattern) as LocationRow[];
 
 	return rows.map(mapLocation);
 }
 
-export async function ensureDefaultLocationData(): Promise<void> {
-	if (hasCachedLocations()) {
-		return;
-	}
-
-	await cacheLocationWeather(defaultLocation());
-}
-
 export async function cacheLocationWeather(location: LocationSeed): Promise<LocationRecord> {
-	const newestDate = latestObservationDate(location.locationKey);
+	const canonicalLocation = canonicalizeLocationSeed(location);
+	const existingLocation = cachedLocationByCoordinates(
+		canonicalLocation.latitude,
+		canonicalLocation.longitude
+	);
+	const locationToCache = existingLocation
+		? { ...canonicalLocation, locationKey: existingLocation.locationKey }
+		: canonicalLocation;
+	const newestDate = latestObservationDate(locationToCache.locationKey);
 	const today = isoDate(new Date());
 	const startDate =
 		newestDate === null
 			? historyStartDate
 			: ([historyStartDate, addDays(newestDate, -14)].sort().at(-1) ?? historyStartDate);
-	const observations = await fetchLocationWeather(location, startDate, today);
+	const observations = await fetchLocationWeather(locationToCache, startDate, today);
+	const locationLabel = buildLocationLabel(locationToCache);
 
 	if (observations.length === 0) {
-		throw new Error(`Open-Meteo returned no daily observations for ${location.displayName}.`);
+		throw new Error(`Open-Meteo returned no daily observations for ${locationLabel}.`);
 	}
 
-	writeLocationWeather(location, observations, new Date().toISOString());
+	writeLocationWeather(locationToCache, observations, new Date().toISOString());
 
-	const updatedLocation = cachedLocationRows('WHERE l.location_key = ?', [location.locationKey]).at(
-		0
-	);
+	const updatedLocation = cachedLocationRows('WHERE l.location_key = ?', [
+		locationToCache.locationKey
+	]).at(0);
 	if (!updatedLocation) {
-		throw new Error(`Cached location ${location.displayName} could not be reloaded from SQLite.`);
+		throw new Error(`Cached location ${locationLabel} could not be reloaded from SQLite.`);
 	}
 
 	return updatedLocation;
@@ -253,33 +273,31 @@ export async function searchLocations(query: string): Promise<LocationCandidate[
 		return cachedMatches;
 	}
 
-	const cachedKeys = new Set(listCachedLocations().map((location) => location.locationKey));
-	let remoteMatches: LocationCandidate[] = [];
-
-	try {
-		const remote = await searchRemoteLocations(query);
-		remoteMatches = remote.map((location) => ({
-			...location,
-			displayName:
-				location.displayName ||
-				buildLocationLabel({
-					name: location.name,
-					admin1: location.admin1,
-					country: location.country
-				}),
-			isCached: cachedKeys.has(location.locationKey)
-		}));
-	} catch {
-		return cachedMatches;
+	const cachedByCoordinates = new Map<string, LocationCandidate>();
+	for (const location of listCachedLocations()) {
+		const coordinateKey = coordinateCacheKey(location.latitude, location.longitude);
+		if (!cachedByCoordinates.has(coordinateKey)) {
+			cachedByCoordinates.set(coordinateKey, toCandidate(location, true));
+		}
 	}
+
+	const remote = await searchRemoteLocations(query);
 
 	const merged = new Map<string, LocationCandidate>();
-	for (const location of remoteMatches) {
-		merged.set(location.locationKey, location);
+	for (const location of remote) {
+		const coordinateKey = coordinateCacheKey(location.latitude, location.longitude);
+		merged.set(
+			coordinateKey,
+			cachedByCoordinates.get(coordinateKey) ?? {
+				...location,
+				isCached: false
+			}
+		);
 	}
 	for (const location of cachedMatches) {
-		if (!merged.has(location.locationKey)) {
-			merged.set(location.locationKey, location);
+		const coordinateKey = coordinateCacheKey(location.latitude, location.longitude);
+		if (!merged.has(coordinateKey)) {
+			merged.set(coordinateKey, location);
 		}
 	}
 
@@ -303,9 +321,12 @@ export function observationsForLocation(locationKey: string): WeatherObservation
 }
 
 export async function loadDashboard(locationKey?: string): Promise<DashboardData> {
-	await ensureDefaultLocationData();
+	let cachedLocations = listCachedLocations();
+	if (cachedLocations.length === 0) {
+		await cacheLocationWeather(defaultLocation());
+		cachedLocations = listCachedLocations();
+	}
 
-	const cachedLocations = listCachedLocations();
 	const selectedLocation =
 		(locationKey
 			? cachedLocations.find((location) => location.locationKey === locationKey)

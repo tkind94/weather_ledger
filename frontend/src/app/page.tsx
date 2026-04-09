@@ -4,6 +4,7 @@ import { LocationSearchPanel } from '@/components/location-search-panel';
 import { ObservationTable } from '@/components/observation-table';
 import { WeatherChart } from '@/components/weather-chart';
 import {
+	buildLocationLabel,
 	coordinateLabel,
 	formatDate,
 	formatDateRange,
@@ -52,7 +53,7 @@ export default async function HomePage({ searchParams }: HomePageProps): Promise
 									selectedLocation.firstObservationDate,
 									selectedLocation.latestObservationDate
 								)}`
-							: 'The first request seeds the default location automatically.'}
+							: 'Search a location to cache history in the ledger.'}
 					</p>
 				</div>
 			</section>
@@ -71,7 +72,7 @@ export default async function HomePage({ searchParams }: HomePageProps): Promise
 							<header className={styles.locationHeader}>
 								<div>
 									<p className={styles.locationEyebrow}>Current dataset</p>
-									<h2 className={styles.locationTitle}>{selectedLocation.displayName}</h2>
+									<h2 className={styles.locationTitle}>{buildLocationLabel(selectedLocation)}</h2>
 									<p className={styles.locationMeta}>
 										<span>
 											{coordinateLabel(selectedLocation.latitude, selectedLocation.longitude)}

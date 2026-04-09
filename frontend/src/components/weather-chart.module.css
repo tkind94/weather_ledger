@@ -45,6 +45,7 @@
 }
 
 .legendLine,
+.legendLineLow,
 .legendBar {
 	display: inline-block;
 	width: 1.5rem;
@@ -53,8 +54,13 @@
 }
 
 .legendLine {
-	background: #f5853f;
+	background: var(--accent-warm);
 	box-shadow: 0 0 0 2px rgba(245, 133, 63, 0.18);
+}
+
+.legendLineLow {
+	background: #3f9af5;
+	box-shadow: 0 0 0 2px rgba(63, 154, 245, 0.18);
 }
 
 .legendBar {

@@ -45,17 +45,25 @@ export type DashboardData = {
 	summary: DashboardSummary | null;
 };
 
+const locationCoordinatePrecision = 4;
+
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
 	month: 'short',
 	day: 'numeric',
-	year: 'numeric'
+	year: 'numeric',
+	timeZone: 'UTC'
 });
 
-const timestampFormatter = new Intl.DateTimeFormat('en-US', {
+const timestampDateFormatter = new Intl.DateTimeFormat('en-US', {
 	month: 'short',
 	day: 'numeric',
+	timeZone: 'UTC'
+});
+
+const timestampTimeFormatter = new Intl.DateTimeFormat('en-US', {
 	hour: 'numeric',
-	minute: '2-digit'
+	minute: '2-digit',
+	timeZone: 'UTC'
 });
 
 function toDate(dateString: string): Date {
@@ -74,6 +82,10 @@ function slugPart(value: string): string {
 
 function coordinateToken(value: number): string {
 	return value.toFixed(3).replace(/-/g, 'm').replace(/\./g, '-');
+}
+
+function roundedCoordinate(value: number): number {
+	return Number(value.toFixed(locationCoordinatePrecision));
 }
 
 export function buildLocationLabel(parts: {
@@ -102,6 +114,34 @@ export function buildLocationKey(parts: {
 		.join('-');
 }
 
+export function coordinateCacheKey(latitude: number, longitude: number): string {
+	return `${roundedCoordinate(latitude).toFixed(locationCoordinatePrecision)},${roundedCoordinate(longitude).toFixed(locationCoordinatePrecision)}`;
+}
+
+export function canonicalizeLocationSeed(parts: {
+	name: string;
+	admin1: string | null;
+	country: string | null;
+	latitude: number;
+	longitude: number;
+	timezone: string;
+}): LocationSeed {
+	const latitude = roundedCoordinate(parts.latitude);
+	const longitude = roundedCoordinate(parts.longitude);
+	const coordinateKey = coordinateCacheKey(latitude, longitude);
+
+	return {
+		locationKey: coordinateKey,
+		displayName: buildLocationLabel(parts),
+		name: parts.name,
+		admin1: parts.admin1,
+		country: parts.country,
+		latitude,
+		longitude,
+		timezone: parts.timezone
+	};
+}
+
 export function coordinateLabel(latitude: number, longitude: number): string {
 	const northSouth = latitude >= 0 ? 'N' : 'S';
 	const eastWest = longitude >= 0 ? 'E' : 'W';
@@ -121,7 +161,8 @@ export function formatTimestamp(value: string | null): string {
 		return 'Not available';
 	}
 
-	return timestampFormatter.format(new Date(value));
+	const date = new Date(value);
+	return `${timestampDateFormatter.format(date)}, ${timestampTimeFormatter.format(date)}`;
 }
 
 export function formatTemperature(value: number | null): string {

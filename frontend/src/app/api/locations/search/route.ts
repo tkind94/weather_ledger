@@ -14,7 +14,7 @@ export async function GET(request: Request): Promise<Response> {
 		const locations = await searchLocations(query);
 		return Response.json({ locations });
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unable to search locations.';
-		return Response.json({ message }, { status: 500 });
+		console.error('Failed to search locations.', error);
+		return Response.json({ error: 'Internal server error' }, { status: 500 });
 	}
 }

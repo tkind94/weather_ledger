@@ -1,10 +1,11 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useDeferredValue, useEffect, useState, useTransition } from 'react';
+import { useDeferredValue, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
 import {
+	buildLocationLabel,
 	formatDateRange,
 	formatTimestamp,
 	type LocationCandidate,
@@ -29,8 +30,8 @@ function locationPayload(location: LocationSeed): { location: LocationSeed } {
 
 async function readError(response: Response): Promise<string> {
 	try {
-		const payload = (await response.json()) as { message?: string };
-		return payload.message ?? 'Request failed.';
+		const payload = (await response.json()) as { error?: string; message?: string };
+		return payload.error ?? payload.message ?? 'Request failed.';
 	} catch {
 		return response.statusText || 'Request failed.';
 	}
@@ -40,22 +41,30 @@ export function LocationSearchPanel({ cachedLocations, selectedLocation }: Props
 	const router = useRouter();
 	const [query, setQuery] = useState('');
 	const deferredQuery = useDeferredValue(query);
+	const trimmedQuery = deferredQuery.trim();
 	const [results, setResults] = useState<LocationCandidate[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [isSearching, setIsSearching] = useState(false);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [isNavigating, startTransition] = useTransition();
+	const activeSearchController = useRef<AbortController | null>(null);
+	const latestSearchQuery = useRef(trimmedQuery);
+
+	latestSearchQuery.current = trimmedQuery;
 
 	useEffect(() => {
-		const trimmedQuery = deferredQuery.trim();
 		if (trimmedQuery.length < 2) {
+			activeSearchController.current?.abort();
+			activeSearchController.current = null;
 			setResults([]);
 			setError(null);
+			setIsSearching(false);
 			return;
 		}
 
 		const controller = new AbortController();
-		let cancelled = false;
+		activeSearchController.current?.abort();
+		activeSearchController.current = controller;
 		setIsSearching(true);
 
 		void fetch(`/api/locations/search?q=${encodeURIComponent(trimmedQuery)}`, {
@@ -68,13 +77,13 @@ export function LocationSearchPanel({ cachedLocations, selectedLocation }: Props
 				}
 
 				const payload = (await response.json()) as SearchResponse;
-				if (!cancelled) {
+				if (!controller.signal.aborted && latestSearchQuery.current === trimmedQuery) {
 					setResults(payload.locations);
 					setError(null);
 				}
 			})
 			.catch((fetchError) => {
-				if (controller.signal.aborted || cancelled) {
+				if (controller.signal.aborted || latestSearchQuery.current !== trimmedQuery) {
 					return;
 				}
 
@@ -86,20 +95,32 @@ export function LocationSearchPanel({ cachedLocations, selectedLocation }: Props
 				);
 			})
 			.finally(() => {
-				if (!cancelled) {
+				if (
+					!controller.signal.aborted &&
+					activeSearchController.current === controller &&
+					latestSearchQuery.current === trimmedQuery
+				) {
+					activeSearchController.current = null;
 					setIsSearching(false);
 				}
 			});
 
 		return () => {
-			cancelled = true;
 			controller.abort();
+			if (activeSearchController.current === controller) {
+				activeSearchController.current = null;
+			}
 		};
-	}, [deferredQuery]);
+	}, [trimmedQuery]);
 
 	function openLocation(locationKey: string): void {
 		startTransition(() => {
 			router.push(`/?location=${encodeURIComponent(locationKey)}`);
+		});
+	}
+
+	function refreshCurrentLocation(): void {
+		startTransition(() => {
 			router.refresh();
 		});
 	}
@@ -121,9 +142,15 @@ export function LocationSearchPanel({ cachedLocations, selectedLocation }: Props
 				throw new Error(await readError(response));
 			}
 
+			const payload = (await response.json()) as { location: LocationRecord };
+
 			setQuery('');
 			setResults([]);
-			openLocation(location.locationKey);
+			if (selectedLocation?.locationKey === payload.location.locationKey) {
+				refreshCurrentLocation();
+			} else {
+				openLocation(payload.location.locationKey);
+			}
 		} catch (requestError) {
 			setError(
 				requestError instanceof Error
@@ -160,7 +187,13 @@ export function LocationSearchPanel({ cachedLocations, selectedLocation }: Props
 					onChange={(event) => setQuery(event.currentTarget.value)}
 				/>
 				<div className={styles.statusRow}>
-					<span>{busy ? 'Working…' : 'Type at least two characters to search.'}</span>
+					<span>
+						{busy
+							? 'Working…'
+							: trimmedQuery.length >= 2 && results.length === 0 && !error
+								? `No locations found for '${trimmedQuery}'`
+								: 'Type at least two characters to search.'}
+					</span>
 					{selectedLocation ? (
 						<button
 							className={styles.secondaryButton}
@@ -214,7 +247,7 @@ export function LocationSearchPanel({ cachedLocations, selectedLocation }: Props
 								onClick={() => openLocation(location.locationKey)}
 								type="button"
 							>
-								<span className={styles.resultName}>{location.displayName}</span>
+								<span className={styles.resultName}>{buildLocationLabel(location)}</span>
 								<span className={styles.cachedMeta}>
 									{location.observationCount} days ·{' '}
 									{formatDateRange(location.firstObservationDate, location.latestObservationDate)}
