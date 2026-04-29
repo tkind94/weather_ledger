@@ -11,6 +11,7 @@ const WeatherChartInner = lazy(() =>
 
 interface WeatherChartProps {
   observations: WeatherObservation[];
+  units: "metric" | "imperial";
 }
 
 function ChartSkeleton() {
@@ -27,7 +28,7 @@ function ChartSkeleton() {
   );
 }
 
-export function WeatherChart({ observations }: WeatherChartProps) {
+export function WeatherChart({ observations, units }: WeatherChartProps) {
   if (observations.length < 2) {
     return (
       <Card className="rounded-2xl border shadow-sm">
@@ -50,7 +51,7 @@ export function WeatherChart({ observations }: WeatherChartProps) {
 
   return (
     <Suspense fallback={<ChartSkeleton />}>
-      <WeatherChartInner observations={observations} />
+      <WeatherChartInner observations={observations} units={units} />
     </Suspense>
   );
 }
