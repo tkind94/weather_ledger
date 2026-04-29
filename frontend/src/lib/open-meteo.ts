@@ -10,6 +10,7 @@ type GeocodingResult = {
   country?: string;
   latitude: number;
   longitude: number;
+  elevation?: number;
   timezone?: string;
 };
 
@@ -78,6 +79,7 @@ export async function searchRemoteLocations(
       country: result.country,
       latitude: result.latitude,
       longitude: result.longitude,
+      elevation: result.elevation,
       timezone: result.timezone,
     }),
   );
