@@ -1,30 +1,73 @@
-# Weather Ledger Frontend
+# React + TypeScript + Vite
 
-This frontend is a Next.js App Router application on Bun. It talks directly to Open-Meteo from server route handlers, persists cached locations plus daily observations in a local SQLite file, and renders the dashboard with React server components.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## Commands
+Currently, two official plugins are available:
 
-```sh
-bun install
-bun run dev
-bun run check
-bun run lint
-bun run test:unit
-bun run build
-bun run start
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+
+## React Compiler
+
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+
+```js
+export default defineConfig([
+  globalIgnores(["dist"]),
+  {
+    files: ["**/*.{ts,tsx}"],
+    extends: [
+      // Other configs...
+
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
+
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ["./tsconfig.node.json", "./tsconfig.app.json"],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+]);
 ```
 
-## Runtime contract
+You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
-- SQLite lives at `../database/weather.sqlite3` by default.
-- Override the database path with `WEATHER_LEDGER_SQLITE_PATH`.
-- The first request seeds the database with the default location if the cache is empty.
+```js
+// eslint.config.js
+import reactX from "eslint-plugin-react-x";
+import reactDom from "eslint-plugin-react-dom";
 
-## Key files
-
-- `src/app/page.tsx`
-- `src/app/api/locations/route.ts`
-- `src/app/api/locations/search/route.ts`
-- `src/lib/server/weather.ts`
-- `src/lib/server/open-meteo.ts`
-- `src/lib/server/sqlite.ts`
+export default defineConfig([
+  globalIgnores(["dist"]),
+  {
+    files: ["**/*.{ts,tsx}"],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs["recommended-typescript"],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ["./tsconfig.node.json", "./tsconfig.app.json"],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+]);
+```

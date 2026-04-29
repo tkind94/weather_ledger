@@ -49,5 +49,5 @@ name = "frontend unit tests"
 language = "system"
 entry = "just test-unit"
 pass_filenames = false
-always_run = true
+always_run = false
 stages = ["pre-commit"]

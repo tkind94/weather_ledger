@@ -1,32 +1,52 @@
 {
-	"name": "weather-ledger-frontend",
-	"private": true,
-	"version": "0.1.0",
-	"type": "module",
-	"scripts": {
-		"dev": "next dev --turbopack --hostname 0.0.0.0 --port ${PORT:-3000}",
-		"build": "next build",
-		"start": "next start --hostname 0.0.0.0 --port ${PORT:-3000}",
-		"check": "tsc --noEmit",
-		"lint": "eslint . && prettier --check .",
-		"format": "prettier --write .",
-		"test:unit": "bun test",
-		"test": "bun run test:unit"
-	},
-	"dependencies": {
-		"better-sqlite3": "^12.6.2",
-		"next": "^16.0.3",
-		"react": "^19.2.0",
-		"react-dom": "^19.2.0"
-	},
-	"devDependencies": {
-		"@types/better-sqlite3": "^7.6.13",
-		"@types/node": "^24.5.2",
-		"@types/react": "^19.2.2",
-		"@types/react-dom": "^19.2.2",
-		"eslint": "^9.39.1",
-		"eslint-config-next": "^16.0.3",
-		"prettier": "^3.6.2",
-		"typescript": "^5.9.3"
-	}
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:watch": "vitest",
+    "check": "tsc -b",
+    "format": "bunx prettier --write ."
+  },
+  "dependencies": {
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "echarts": "^6.0.0",
+    "echarts-for-react": "^3.0.6",
+    "idb": "^8.0.3",
+    "lucide-react": "^1.12.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "tailwind-merge": "^3.5.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.12.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.5.0",
+    "eslint": "^10.2.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.5.0",
+    "jsdom": "^29.1.0",
+    "postcss": "^8.5.12",
+    "tailwindcss": "3",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.58.2",
+    "vite": "^8.0.10",
+    "vitest": "^4.1.5"
+  }
 }

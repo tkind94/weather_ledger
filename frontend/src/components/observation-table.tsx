@@ -1,63 +1,75 @@
-import type { ReactNode } from 'react';
-
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-	formatDate,
-	formatPrecipitation,
-	formatTemperature,
-	type WeatherObservation
-} from '@/lib/weather';
+  formatDate,
+  formatTemperature,
+  formatPrecipitation,
+  type WeatherObservation,
+} from "@/lib/weather";
 
-import styles from './observation-table.module.css';
+interface ObservationTableProps {
+  observations: WeatherObservation[];
+}
 
-type Props = {
-	observations: WeatherObservation[];
-};
+export function ObservationTable({ observations }: ObservationTableProps) {
+  const recent = observations.slice(-28).reverse();
 
-export function ObservationTable({ observations }: Props): ReactNode {
-	const recent = [...observations].reverse().slice(0, 28);
-
-	return (
-		<section className={styles.card}>
-			<header className={styles.header}>
-				<div>
-					<p className={styles.eyebrow}>Ledger</p>
-					<h3 className={styles.title}>Latest cached observations</h3>
-				</div>
-				<p className={styles.copy}>
-					Showing the most recent {recent.length} days stored in SQLite.
-				</p>
-			</header>
-
-			<div className={styles.tableWrap}>
-				<table className={styles.table}>
-					<thead>
-						<tr>
-							<th scope="col">Date</th>
-							<th scope="col">High</th>
-							<th scope="col">Low</th>
-							<th scope="col">Precipitation</th>
-						</tr>
-					</thead>
-					<tbody>
-						{recent.length === 0 ? (
-							<tr>
-								<td colSpan={4} style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>
-									No data available
-								</td>
-							</tr>
-						) : (
-							recent.map((observation) => (
-								<tr key={observation.weatherDate}>
-									<td>{formatDate(observation.weatherDate)}</td>
-									<td>{formatTemperature(observation.maxTemperature)}</td>
-									<td>{formatTemperature(observation.minTemperature)}</td>
-									<td>{formatPrecipitation(observation.precipitation)}</td>
-								</tr>
-							))
-						)}
-					</tbody>
-				</table>
-			</div>
-		</section>
-	);
+  return (
+    <Card className="rounded-2xl border shadow-sm">
+      <CardHeader>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Ledger
+        </p>
+        <CardTitle className="font-serif text-xl">
+          Latest cached observations
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {recent.length === 0 ? (
+          <p className="py-8 text-center text-muted-foreground">
+            No data available
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left">
+                  <th className="pb-3 font-medium uppercase tracking-wider text-muted-foreground text-xs">
+                    Date
+                  </th>
+                  <th className="pb-3 font-medium uppercase tracking-wider text-muted-foreground text-xs text-right">
+                    High
+                  </th>
+                  <th className="pb-3 font-medium uppercase tracking-wider text-muted-foreground text-xs text-right">
+                    Low
+                  </th>
+                  <th className="pb-3 font-medium uppercase tracking-wider text-muted-foreground text-xs text-right">
+                    Precipitation
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {recent.map((obs) => (
+                  <tr
+                    key={obs.weatherDate}
+                    className="border-b last:border-0 transition-colors hover:bg-muted/50"
+                  >
+                    <td className="py-3">{formatDate(obs.weatherDate)}</td>
+                    <td className="py-3 text-right font-mono">
+                      {formatTemperature(obs.maxTemperature)}
+                    </td>
+                    <td className="py-3 text-right font-mono">
+                      {formatTemperature(obs.minTemperature)}
+                    </td>
+                    <td className="py-3 text-right font-mono">
+                      {formatPrecipitation(obs.precipitation)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
