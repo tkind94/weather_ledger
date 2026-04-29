@@ -763,13 +763,15 @@ function AggregatesSection({
 
 function ChartSection({
   observations,
+  units,
 }: {
   observations: WeatherObservation[];
+  units: "metric" | "imperial";
 }) {
   return (
     <Frame label="§03 Temperature & Precipitation · full history">
       <div style={{ padding: "0" }}>
-        <WeatherChart observations={observations} />
+        <WeatherChart observations={observations} units={units} />
       </div>
     </Frame>
   );
@@ -1608,7 +1610,7 @@ export function Dashboard() {
             {rangeAgg && (
               <AggregatesSection agg={rangeAgg} units={units} range={range} />
             )}
-            <ChartSection observations={observations} />
+            <ChartSection observations={observations} units={units} />
             <RecentAndStreaks
               observations={observations}
               streaks={streaks}

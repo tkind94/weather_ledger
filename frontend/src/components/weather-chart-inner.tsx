@@ -5,16 +5,30 @@ import type { WeatherObservation } from "@/lib/weather";
 
 interface WeatherChartInnerProps {
   observations: WeatherObservation[];
+  units: "metric" | "imperial";
 }
 
-export function WeatherChartInner({ observations }: WeatherChartInnerProps) {
+export function WeatherChartInner({
+  observations,
+  units,
+}: WeatherChartInnerProps) {
   const recent = observations.slice(-60);
 
   const option = useMemo(() => {
     const dates = recent.map((obs) => obs.weatherDate);
-    const maxTemps = recent.map((obs) => obs.maxTemperature);
-    const minTemps = recent.map((obs) => obs.minTemperature);
-    const precips = recent.map((obs) => obs.precipitation);
+    const maxTemps = recent.map((obs) =>
+      units === "imperial"
+        ? (obs.maxTemperature * 9) / 5 + 32
+        : obs.maxTemperature,
+    );
+    const minTemps = recent.map((obs) =>
+      units === "imperial"
+        ? (obs.minTemperature * 9) / 5 + 32
+        : obs.minTemperature,
+    );
+    const precips = recent.map((obs) =>
+      units === "imperial" ? obs.precipitation / 25.4 : obs.precipitation,
+    );
 
     return {
       tooltip: {
@@ -34,7 +48,14 @@ export function WeatherChartInner({ observations }: WeatherChartInnerProps) {
           const date = params[0]!.axisValue;
           let html = `<div style="font-weight:600;margin-bottom:4px">${date}</div>`;
           for (const p of params) {
-            const unit = p.seriesName === "Precipitation" ? " mm" : "°C";
+            const unit =
+              p.seriesName === "Precipitation"
+                ? units === "imperial"
+                  ? " in"
+                  : " mm"
+                : units === "imperial"
+                  ? "°F"
+                  : "°C";
             html += `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">
               <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
               <span>${p.seriesName}: ${p.value.toFixed(1)}${unit}</span>
@@ -70,7 +91,7 @@ export function WeatherChartInner({ observations }: WeatherChartInnerProps) {
       yAxis: [
         {
           type: "value",
-          name: "°C",
+          name: units === "imperial" ? "°F" : "°C",
           nameTextStyle: { color: "#9ca3af", fontSize: 10 },
           axisLabel: { color: "#9ca3af", fontSize: 10 },
           axisLine: { show: false },
@@ -78,7 +99,7 @@ export function WeatherChartInner({ observations }: WeatherChartInnerProps) {
         },
         {
           type: "value",
-          name: "mm",
+          name: units === "imperial" ? "in" : "mm",
           nameTextStyle: { color: "#9ca3af", fontSize: 10 },
           axisLabel: { color: "#9ca3af", fontSize: 10 },
           axisLine: { show: false },
@@ -142,7 +163,7 @@ export function WeatherChartInner({ observations }: WeatherChartInnerProps) {
         },
       ],
     };
-  }, [recent]);
+  }, [recent, units]);
 
   return (
     <Card className="rounded-2xl border shadow-sm">
