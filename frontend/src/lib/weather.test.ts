@@ -3,13 +3,8 @@ import {
   buildLocationLabel,
   coordinateCacheKey,
   canonicalizeLocationSeed,
-  coordinateLabel,
-  formatDate,
-  formatTimestamp,
-  formatTemperature,
-  formatPrecipitation,
-  formatDateRange,
   summarizeObservations,
+  computeTodayVsHistorical,
   type WeatherObservation,
 } from "./weather";
 
@@ -85,62 +80,6 @@ describe("canonicalizeLocationSeed", () => {
   });
 });
 
-describe("coordinateLabel", () => {
-  it("formats northern/eastern coordinates", () => {
-    expect(coordinateLabel(40.585, -105.084)).toBe("40.585° N, 105.084° W");
-  });
-
-  it("formats southern/western coordinates", () => {
-    expect(coordinateLabel(-33.8688, 151.2093)).toBe("33.869° S, 151.209° E");
-  });
-
-  it("handles zero coordinates", () => {
-    expect(coordinateLabel(0, 0)).toBe("0.000° N, 0.000° E");
-  });
-});
-
-describe("formatDate", () => {
-  it("formats a date string in UTC", () => {
-    const result = formatDate("2024-01-15");
-    expect(result).toBe("Jan 15, 2024");
-  });
-});
-
-describe("formatTimestamp", () => {
-  it("formats an ISO timestamp in UTC", () => {
-    const result = formatTimestamp("2024-01-15T14:30:00Z");
-    expect(result).toMatch(/Jan 15/);
-    expect(result).toMatch(/2:30 PM/);
-  });
-});
-
-describe("formatTemperature", () => {
-  it("formats with one decimal and °C suffix", () => {
-    expect(formatTemperature(23.456)).toBe("23.5°C");
-  });
-
-  it("handles negative values", () => {
-    expect(formatTemperature(-5.1)).toBe("-5.1°C");
-  });
-});
-
-describe("formatPrecipitation", () => {
-  it("formats with one decimal and mm suffix", () => {
-    expect(formatPrecipitation(12.345)).toBe("12.3 mm");
-  });
-
-  it("handles zero", () => {
-    expect(formatPrecipitation(0)).toBe("0.0 mm");
-  });
-});
-
-describe("formatDateRange", () => {
-  it("formats a range with en dash", () => {
-    const result = formatDateRange("2024-01-01", "2024-01-31");
-    expect(result).toBe("Jan 1, 2024 – Jan 31, 2024");
-  });
-});
-
 describe("summarizeObservations", () => {
   const sampleData: WeatherObservation[] = [
     {
@@ -197,5 +136,54 @@ describe("summarizeObservations", () => {
     const summary = summarizeObservations(sampleData);
     expect(summary.wettestDate).toBe("2024-01-02");
     expect(summary.wettestPrecipitation).toBe(10);
+  });
+});
+
+describe("computeTodayVsHistorical", () => {
+  const makeObs = (
+    date: string,
+    maxTemp: number,
+    minTemp: number,
+    precip: number,
+  ): WeatherObservation => ({
+    weatherDate: date,
+    maxTemperature: maxTemp,
+    minTemperature: minTemp,
+    precipitation: precip,
+  });
+
+  it("falls back to Feb 28 when Feb 29 has no prior data", () => {
+    const obs: WeatherObservation[] = [
+      makeObs("2023-02-28", 10, 0, 0),
+      makeObs("2024-02-29", 15, 5, 2),
+    ];
+    const result = computeTodayVsHistorical(obs);
+    expect(result).not.toBeNull();
+    expect(result!.today.weatherDate).toBe("2024-02-29");
+    expect(result!.sameDayHistory.length).toBe(1);
+    expect(result!.sameDayHistory[0]!.weatherDate).toBe("2023-02-28");
+    expect(result!.yearsOfRecord).toBe(1);
+  });
+
+  it("uses prior Feb 29 data when available", () => {
+    const obs: WeatherObservation[] = [
+      makeObs("2020-02-29", 8, -2, 1),
+      makeObs("2024-02-29", 15, 5, 2),
+    ];
+    const result = computeTodayVsHistorical(obs);
+    expect(result).not.toBeNull();
+    expect(result!.today.weatherDate).toBe("2024-02-29");
+    expect(result!.sameDayHistory.length).toBe(1);
+    expect(result!.sameDayHistory[0]!.weatherDate).toBe("2020-02-29");
+    expect(result!.yearsOfRecord).toBe(1);
+  });
+
+  it("returns null when neither Feb 29 nor Feb 28 data exists", () => {
+    const obs: WeatherObservation[] = [
+      makeObs("2024-01-15", 10, 0, 0),
+      makeObs("2024-02-29", 15, 5, 2),
+    ];
+    const result = computeTodayVsHistorical(obs);
+    expect(result).toBeNull();
   });
 });

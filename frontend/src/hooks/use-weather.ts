@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useWeather } from "@/lib/state";
 import * as storage from "@/lib/storage";
 import * as openMeteo from "@/lib/open-meteo";
@@ -218,7 +218,10 @@ export function useWeatherActions() {
     [dispatch],
   );
 
+  const initializedRef = useRef(false);
   useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
     loadLocations();
   }, [loadLocations]);
 

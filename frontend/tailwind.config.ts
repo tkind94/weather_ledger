@@ -9,15 +9,9 @@ const config: Config = {
       colors: {
         accent: {
           DEFAULT: "hsl(var(--accent))",
-          warm: "hsl(var(--accent-warm))",
-          deep: "hsl(var(--accent-deep))",
           foreground: "hsl(var(--accent-foreground))",
         },
         surface: "hsl(var(--surface))",
-        ink: {
-          DEFAULT: "hsl(var(--ink))",
-          soft: "hsl(var(--ink-soft))",
-        },
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         muted: {
