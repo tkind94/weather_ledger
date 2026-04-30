@@ -12,23 +12,34 @@ export function WeatherChartInner({
   observations,
   units,
 }: WeatherChartInnerProps) {
-  const recent = observations.slice(-60);
-
   const option = useMemo(() => {
-    const dates = recent.map((obs) => obs.weatherDate);
-    const maxTemps = recent.map((obs) =>
+    const dates = observations.map((obs) => obs.weatherDate);
+    const maxTemps = observations.map((obs) =>
       units === "imperial"
         ? (obs.maxTemperature * 9) / 5 + 32
         : obs.maxTemperature,
     );
-    const minTemps = recent.map((obs) =>
+    const minTemps = observations.map((obs) =>
       units === "imperial"
         ? (obs.minTemperature * 9) / 5 + 32
         : obs.minTemperature,
     );
-    const precips = recent.map((obs) =>
+    const precips = observations.map((obs) =>
       units === "imperial" ? obs.precipitation / 25.4 : obs.precipitation,
     );
+
+    const n = dates.length;
+    let interval: number;
+    if (n <= 7) {
+      interval = 0;
+    } else if (n <= 30) {
+      interval = 3;
+    } else if (n <= 90) {
+      interval = 7;
+    } else {
+      interval = 14;
+    }
+    const showYear = n > 90;
 
     return {
       tooltip: {
@@ -80,9 +91,11 @@ export function WeatherChartInner({
         axisLabel: {
           color: "#9ca3af",
           fontSize: 10,
+          interval,
           formatter: (val: string) => {
             const d = new Date(`${val}T00:00:00Z`);
-            return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+            const m = `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+            return showYear ? `${m}/${d.getUTCFullYear() % 100}` : m;
           },
         },
         axisLine: { lineStyle: { color: "#e5e7eb" } },
@@ -163,7 +176,7 @@ export function WeatherChartInner({
         },
       ],
     };
-  }, [recent, units]);
+  }, [observations, units]);
 
   return (
     <Card className="rounded-2xl border shadow-sm">
@@ -176,7 +189,7 @@ export function WeatherChartInner({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {recent.length === 0 ? (
+        {observations.length === 0 ? (
           <div className="flex h-[300px] items-center justify-center text-muted-foreground">
             No data available
           </div>
