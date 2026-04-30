@@ -369,6 +369,8 @@ function StationsRail({
   onSelect,
   onSearch,
   onCache,
+  onDelete,
+  onRefresh,
   loading,
 }: {
   locations: LocationRecord[];
@@ -376,6 +378,8 @@ function StationsRail({
   onSelect: (key: string) => void;
   onSearch: (q: string) => Promise<LocationCandidate[]>;
   onCache: (loc: LocationCandidate) => void;
+  onDelete?: (key: string) => void;
+  onRefresh?: (key: string) => void;
   loading: boolean;
 }) {
   const [q, setQ] = useState("");
@@ -520,36 +524,89 @@ function StationsRail({
           {locations.map((loc) => {
             const active = loc.locationKey === selectedKey;
             return (
-              <button
+              <div
                 key={loc.locationKey}
                 onClick={() => onSelect(loc.locationKey)}
                 style={{
                   background: active ? P.ink : "transparent",
                   color: active ? P.paper : P.ink,
-                  border: "none",
-                  padding: "10px 16px",
                   borderRight: `1px solid ${P.rule}`,
                   cursor: "pointer",
-                  textAlign: "left",
-                  whiteSpace: "nowrap",
                   fontFamily: "'Inter Tight', sans-serif",
                   fontSize: 13,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "10px 16px",
+                  gap: 8,
+                  minWidth: 0,
                 }}
               >
-                <div style={{ fontWeight: 600 }}>{loc.name}</div>
-                {loc.admin1 && (
-                  <div
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+                    {loc.name}
+                  </div>
+                  {loc.admin1 && (
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: active ? P.faint : P.inkSoft,
+                        marginTop: 1,
+                        fontFamily: "'JetBrains Mono', monospace",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {loc.admin1}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRefresh?.(loc.locationKey);
+                    }}
+                    title="Refresh"
                     style={{
-                      fontSize: 10,
-                      color: active ? P.faint : P.inkSoft,
-                      marginTop: 1,
-                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 12,
+                      width: 20,
+                      height: 20,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "none",
+                      background: "transparent",
+                      cursor: "pointer",
+                      padding: 0,
+                      color: active ? P.faint : P.mute,
                     }}
                   >
-                    {loc.admin1}
-                  </div>
-                )}
-              </button>
+                    ↻
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete?.(loc.locationKey);
+                    }}
+                    title="Delete"
+                    style={{
+                      fontSize: 12,
+                      width: 20,
+                      height: 20,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "none",
+                      background: "transparent",
+                      cursor: "pointer",
+                      padding: 0,
+                      color: active ? P.faint : P.mute,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
             );
           })}
         </div>
@@ -607,7 +664,7 @@ function HeroSection({
                   fontFamily: "'Inter Tight', sans-serif",
                   fontSize: 52,
                   fontWeight: 700,
-                  color: P.hot,
+                  color: P.ink,
                   lineHeight: 1,
                   fontVariantNumeric: "tabular-nums",
                 }}
@@ -634,7 +691,7 @@ function HeroSection({
                   fontFamily: "'Inter Tight', sans-serif",
                   fontSize: 36,
                   fontWeight: 700,
-                  color: P.cold,
+                  color: P.ink,
                   lineHeight: 1,
                   fontVariantNumeric: "tabular-nums",
                 }}
@@ -1522,9 +1579,6 @@ export function Dashboard() {
     deleteLocation,
   } = useWeatherActions();
 
-  void deleteLocation;
-  void refreshCurrentLocation;
-
   const { selectedLocation, observations, locations, loading, error } = state;
 
   const [units, setUnits] = useState<"metric" | "imperial">("metric");
@@ -1591,18 +1645,40 @@ export function Dashboard() {
           onSelect={selectLocation}
           onSearch={searchLocations}
           onCache={(loc) => cacheLocation(loc)}
+          onDelete={deleteLocation}
+          onRefresh={refreshCurrentLocation}
           loading={loading}
         />
 
         {error && (
           <div
             style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
               border: `1px solid ${P.hot}`,
               background: `${P.hot}12`,
               padding: "8px 14px",
             }}
           >
             <Mono style={{ fontSize: 11, color: P.hot }}>{error}</Mono>
+            <button
+              onClick={() => refreshCurrentLocation()}
+              disabled={loading}
+              style={{
+                background: P.ink,
+                color: P.paper,
+                border: "none",
+                padding: "4px 10px",
+                fontSize: 10,
+                fontFamily: "'JetBrains Mono', monospace",
+                cursor: loading ? "wait" : "pointer",
+                opacity: loading ? 0.6 : 1,
+              }}
+            >
+              Retry
+            </button>
           </div>
         )}
 
