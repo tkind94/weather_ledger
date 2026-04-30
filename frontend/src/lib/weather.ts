@@ -262,6 +262,7 @@ export function computeStreaks(obs: WeatherObservation[]): Streaks {
   };
 }
 
+// inclusive lower bound: includes the cutoff day itself
 export function computeAnomalies(obs: WeatherObservation[]): Anomaly | null {
   if (obs.length < 14) return null;
   const last = obs[obs.length - 1]!;
@@ -271,7 +272,7 @@ export function computeAnomalies(obs: WeatherObservation[]): Anomaly | null {
   const yearSevenAgo = new Date(lastDate.getTime() - (365 + 7) * 86400000);
 
   const recent = obs.filter(
-    (o) => new Date(o.weatherDate + "T00:00:00Z") > sevenAgo,
+    (o) => new Date(o.weatherDate + "T00:00:00Z") >= sevenAgo,
   );
   const prevYear = obs.filter((o) => {
     const d = new Date(o.weatherDate + "T00:00:00Z");
@@ -383,6 +384,7 @@ export function computePrecipHistogram(
   return buckets.map((b, i) => ({ label: b[2], count: counts[i]! }));
 }
 
+// inclusive lower bound: includes the cutoff day itself
 export function computeCalendarYear(
   obs: WeatherObservation[],
 ): WeatherObservation[] {
@@ -394,6 +396,7 @@ export function computeCalendarYear(
   return obs.filter((o) => new Date(o.weatherDate + "T00:00:00Z") >= cutoff);
 }
 
+// inclusive lower bound: includes the cutoff day itself
 export function computeRangeAgg(
   obs: WeatherObservation[],
   days: number | null,
@@ -407,7 +410,7 @@ export function computeRangeAgg(
     const cutoff = new Date(
       new Date(last.weatherDate + "T00:00:00Z").getTime() - days * 86400000,
     );
-    slice = obs.filter((o) => new Date(o.weatherDate + "T00:00:00Z") > cutoff);
+    slice = obs.filter((o) => new Date(o.weatherDate + "T00:00:00Z") >= cutoff);
   }
   if (slice.length === 0) return null;
 
