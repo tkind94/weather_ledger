@@ -780,14 +780,19 @@ function AggregatesSection({
 function ChartSection({
   observations,
   units,
+  range,
 }: {
   observations: WeatherObservation[];
   units: "metric" | "imperial";
+  range: "7d" | "30d" | "1y" | "all";
 }) {
+  const rangeDays = RANGE_DAYS[range];
+  const filtered =
+    rangeDays !== null ? observations.slice(-rangeDays) : observations;
   return (
-    <Frame label="§03 Temperature & Precipitation · full history">
+    <Frame label={`§03 Temperature & Precipitation · ${range.toUpperCase()}`}>
       <div style={{ padding: "0" }}>
-        <WeatherChart observations={observations} units={units} />
+        <WeatherChart observations={filtered} units={units} />
       </div>
     </Frame>
   );
@@ -1644,7 +1649,11 @@ export function Dashboard() {
             {rangeAgg && (
               <AggregatesSection agg={rangeAgg} units={units} range={range} />
             )}
-            <ChartSection observations={observations} units={units} />
+            <ChartSection
+              observations={observations}
+              units={units}
+              range={range}
+            />
             <RecentAndStreaks
               observations={observations}
               streaks={streaks}
