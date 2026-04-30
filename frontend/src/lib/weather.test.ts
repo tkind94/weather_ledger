@@ -4,6 +4,7 @@ import {
   coordinateCacheKey,
   canonicalizeLocationSeed,
   summarizeObservations,
+  computeTodayVsHistorical,
   type WeatherObservation,
 } from "./weather";
 
@@ -135,5 +136,54 @@ describe("summarizeObservations", () => {
     const summary = summarizeObservations(sampleData);
     expect(summary.wettestDate).toBe("2024-01-02");
     expect(summary.wettestPrecipitation).toBe(10);
+  });
+});
+
+describe("computeTodayVsHistorical", () => {
+  const makeObs = (
+    date: string,
+    maxTemp: number,
+    minTemp: number,
+    precip: number,
+  ): WeatherObservation => ({
+    weatherDate: date,
+    maxTemperature: maxTemp,
+    minTemperature: minTemp,
+    precipitation: precip,
+  });
+
+  it("falls back to Feb 28 when Feb 29 has no prior data", () => {
+    const obs: WeatherObservation[] = [
+      makeObs("2023-02-28", 10, 0, 0),
+      makeObs("2024-02-29", 15, 5, 2),
+    ];
+    const result = computeTodayVsHistorical(obs);
+    expect(result).not.toBeNull();
+    expect(result!.today.weatherDate).toBe("2024-02-29");
+    expect(result!.sameDayHistory.length).toBe(1);
+    expect(result!.sameDayHistory[0]!.weatherDate).toBe("2023-02-28");
+    expect(result!.yearsOfRecord).toBe(1);
+  });
+
+  it("uses prior Feb 29 data when available", () => {
+    const obs: WeatherObservation[] = [
+      makeObs("2020-02-29", 8, -2, 1),
+      makeObs("2024-02-29", 15, 5, 2),
+    ];
+    const result = computeTodayVsHistorical(obs);
+    expect(result).not.toBeNull();
+    expect(result!.today.weatherDate).toBe("2024-02-29");
+    expect(result!.sameDayHistory.length).toBe(1);
+    expect(result!.sameDayHistory[0]!.weatherDate).toBe("2020-02-29");
+    expect(result!.yearsOfRecord).toBe(1);
+  });
+
+  it("returns null when neither Feb 29 nor Feb 28 data exists", () => {
+    const obs: WeatherObservation[] = [
+      makeObs("2024-01-15", 10, 0, 0),
+      makeObs("2024-02-29", 15, 5, 2),
+    ];
+    const result = computeTodayVsHistorical(obs);
+    expect(result).toBeNull();
   });
 });

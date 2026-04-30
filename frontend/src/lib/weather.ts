@@ -147,11 +147,18 @@ export function computeTodayVsHistorical(
   if (obs.length < 2) return null;
   const today = obs[obs.length - 1]!;
   const monthDay = today.weatherDate.slice(5);
-  const sameDay = obs.filter(
+  let sameDay = obs.filter(
     (o) =>
       o.weatherDate !== today.weatherDate &&
       o.weatherDate.slice(5) === monthDay,
   );
+  if (sameDay.length === 0 && monthDay === "02-29") {
+    sameDay = obs.filter(
+      (o) =>
+        o.weatherDate !== today.weatherDate &&
+        o.weatherDate.slice(5) === "02-28",
+    );
+  }
   if (sameDay.length === 0) return null;
   const avgHigh =
     sameDay.reduce((s, o) => s + o.maxTemperature, 0) / sameDay.length;
