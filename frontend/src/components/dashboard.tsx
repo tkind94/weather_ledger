@@ -1,5 +1,12 @@
-import { useState, useMemo, type CSSProperties, type ReactNode } from "react";
+import {
+  useState,
+  useEffect,
+  useMemo,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useWeatherActions } from "@/hooks/use-weather";
+import { getPreference, setPreference } from "@/lib/storage";
 import { WeatherChart } from "@/components/weather-chart";
 import {
   computeTodayVsHistorical,
@@ -1581,8 +1588,29 @@ export function Dashboard() {
 
   const { selectedLocation, observations, locations, loading, error } = state;
 
-  const [units, setUnits] = useState<"metric" | "imperial">("metric");
-  const [range, setRange] = useState<"7d" | "30d" | "1y" | "all">("30d");
+  const [units, setUnits] = useState<"metric" | "imperial">(
+    () => (getPreference("units") as "metric" | "imperial") || "metric",
+  );
+  const [range, setRange] = useState<"7d" | "30d" | "1y" | "all">(
+    () => (getPreference("range") as "7d" | "30d" | "1y" | "all") || "30d",
+  );
+
+  const handleSetUnits = (u: "metric" | "imperial") => {
+    setUnits(u);
+    setPreference("units", u);
+  };
+
+  const handleSetRange = (r: "7d" | "30d" | "1y" | "all") => {
+    setRange(r);
+    setPreference("range", r);
+  };
+
+  // Persist selected location preference
+  useEffect(() => {
+    if (state.selectedLocation) {
+      setPreference("selectedLocation", state.selectedLocation.locationKey);
+    }
+  }, [state.selectedLocation]);
 
   const todayVs = useMemo(
     () => computeTodayVsHistorical(observations),
@@ -1623,9 +1651,9 @@ export function Dashboard() {
     >
       <AppHeader
         units={units}
-        setUnits={setUnits}
+        setUnits={handleSetUnits}
         range={range}
-        setRange={setRange}
+        setRange={handleSetRange}
         location={selectedLocation}
       />
 

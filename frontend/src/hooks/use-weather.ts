@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useWeather } from "@/lib/state";
 import * as storage from "@/lib/storage";
+import { getPreference } from "@/lib/storage";
 import * as openMeteo from "@/lib/open-meteo";
 import { summarizeObservations, type LocationSeed } from "@/lib/weather";
 
@@ -27,6 +28,30 @@ function oneYearAgoISO(): string {
 
 export function useWeatherActions() {
   const { state, dispatch } = useWeather();
+
+  const selectLocation = useCallback(
+    async (locationKey: string) => {
+      dispatch({ type: "SET_LOADING", loading: true });
+      try {
+        const location = await storage.getLocation(locationKey);
+        if (!location) {
+          dispatch({ type: "SET_ERROR", error: "Location not found" });
+          return;
+        }
+        const observations = await storage.getObservations(locationKey);
+        const summary = summarizeObservations(observations);
+        dispatch({ type: "SELECT_LOCATION", location, observations, summary });
+      } catch (err) {
+        dispatch({
+          type: "SET_ERROR",
+          error: err instanceof Error ? err.message : "Failed to load location",
+        });
+      } finally {
+        dispatch({ type: "SET_LOADING", loading: false });
+      }
+    },
+    [dispatch],
+  );
 
   const loadLocations = useCallback(async () => {
     dispatch({ type: "SET_LOADING", loading: true });
@@ -65,6 +90,11 @@ export function useWeatherActions() {
         });
       } else {
         dispatch({ type: "SET_LOCATIONS", locations });
+        // Restore last selected location from persisted preference
+        const savedKey = getPreference("selectedLocation");
+        if (savedKey && locations.some((l) => l.locationKey === savedKey)) {
+          await selectLocation(savedKey);
+        }
       }
     } catch (err) {
       dispatch({
@@ -74,31 +104,7 @@ export function useWeatherActions() {
     } finally {
       dispatch({ type: "SET_LOADING", loading: false });
     }
-  }, [dispatch]);
-
-  const selectLocation = useCallback(
-    async (locationKey: string) => {
-      dispatch({ type: "SET_LOADING", loading: true });
-      try {
-        const location = await storage.getLocation(locationKey);
-        if (!location) {
-          dispatch({ type: "SET_ERROR", error: "Location not found" });
-          return;
-        }
-        const observations = await storage.getObservations(locationKey);
-        const summary = summarizeObservations(observations);
-        dispatch({ type: "SELECT_LOCATION", location, observations, summary });
-      } catch (err) {
-        dispatch({
-          type: "SET_ERROR",
-          error: err instanceof Error ? err.message : "Failed to load location",
-        });
-      } finally {
-        dispatch({ type: "SET_LOADING", loading: false });
-      }
-    },
-    [dispatch],
-  );
+  }, [dispatch, selectLocation]);
 
   const searchLocations = useCallback(
     async (query: string) => {
