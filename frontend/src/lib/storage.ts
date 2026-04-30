@@ -84,6 +84,23 @@ export async function putObservations(
   await tx.done;
 }
 
+const PREF_KEYS = {
+  units: "pref_units",
+  range: "pref_range",
+  selectedLocation: "pref_selectedLocation",
+} as const;
+
+export function getPreference(key: keyof typeof PREF_KEYS): string | null {
+  return localStorage.getItem(PREF_KEYS[key]);
+}
+
+export function setPreference(
+  key: keyof typeof PREF_KEYS,
+  value: string,
+): void {
+  localStorage.setItem(PREF_KEYS[key], value);
+}
+
 export async function clearAllData(): Promise<void> {
   const db = await getDb();
   const tx = db.transaction([LOCATIONS, OBSERVATIONS], "readwrite");
