@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "weather_ledger",
+  "project_id": "c5bc4980-904d-4904-a1b6-616e3d46944b"
+}
