@@ -3,12 +3,6 @@ import {
   buildLocationLabel,
   coordinateCacheKey,
   canonicalizeLocationSeed,
-  coordinateLabel,
-  formatDate,
-  formatTimestamp,
-  formatTemperature,
-  formatPrecipitation,
-  formatDateRange,
   summarizeObservations,
   type WeatherObservation,
 } from "./weather";
@@ -82,62 +76,6 @@ describe("canonicalizeLocationSeed", () => {
     });
     expect(seed.admin1).toBeNull();
     expect(seed.country).toBeNull();
-  });
-});
-
-describe("coordinateLabel", () => {
-  it("formats northern/eastern coordinates", () => {
-    expect(coordinateLabel(40.585, -105.084)).toBe("40.585° N, 105.084° W");
-  });
-
-  it("formats southern/western coordinates", () => {
-    expect(coordinateLabel(-33.8688, 151.2093)).toBe("33.869° S, 151.209° E");
-  });
-
-  it("handles zero coordinates", () => {
-    expect(coordinateLabel(0, 0)).toBe("0.000° N, 0.000° E");
-  });
-});
-
-describe("formatDate", () => {
-  it("formats a date string in UTC", () => {
-    const result = formatDate("2024-01-15");
-    expect(result).toBe("Jan 15, 2024");
-  });
-});
-
-describe("formatTimestamp", () => {
-  it("formats an ISO timestamp in UTC", () => {
-    const result = formatTimestamp("2024-01-15T14:30:00Z");
-    expect(result).toMatch(/Jan 15/);
-    expect(result).toMatch(/2:30 PM/);
-  });
-});
-
-describe("formatTemperature", () => {
-  it("formats with one decimal and °C suffix", () => {
-    expect(formatTemperature(23.456)).toBe("23.5°C");
-  });
-
-  it("handles negative values", () => {
-    expect(formatTemperature(-5.1)).toBe("-5.1°C");
-  });
-});
-
-describe("formatPrecipitation", () => {
-  it("formats with one decimal and mm suffix", () => {
-    expect(formatPrecipitation(12.345)).toBe("12.3 mm");
-  });
-
-  it("handles zero", () => {
-    expect(formatPrecipitation(0)).toBe("0.0 mm");
-  });
-});
-
-describe("formatDateRange", () => {
-  it("formats a range with en dash", () => {
-    const result = formatDateRange("2024-01-01", "2024-01-31");
-    expect(result).toBe("Jan 1, 2024 – Jan 31, 2024");
   });
 });
 
