@@ -789,13 +789,7 @@ function ChartSection({
   const rangeDays = RANGE_DAYS[range];
   const filtered =
     rangeDays !== null ? observations.slice(-rangeDays) : observations;
-  return (
-    <Frame label={`§03 Temperature & Precipitation · ${range.toUpperCase()}`}>
-      <div style={{ padding: "0" }}>
-        <WeatherChart observations={filtered} units={units} />
-      </div>
-    </Frame>
-  );
+  return <WeatherChart observations={filtered} units={units} />;
 }
 
 // ── Section §04-05: Recent & Streaks ─────────────────────────────────────────
