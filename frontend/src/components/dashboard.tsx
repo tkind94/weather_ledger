@@ -105,7 +105,14 @@ function Mono({
 
 function Frame({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div style={{ border: `1px solid ${P.rule}`, background: P.card }}>
+    <div
+      style={{
+        border: `1px solid ${P.rule}`,
+        background: P.card,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       <div
         style={{
           borderBottom: `1px solid ${P.rule}`,
@@ -124,7 +131,16 @@ function Frame({ label, children }: { label: string; children: ReactNode }) {
           {label}
         </Mono>
       </div>
-      {children}
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -858,7 +874,16 @@ function RecentAndStreaks({
 
       {/* Streaks */}
       <Frame label="§05 Streaks · all-time">
-        <div style={{ padding: "12px 18px", minWidth: 220 }}>
+        <div
+          style={{
+            padding: "12px 18px",
+            minWidth: 220,
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+          }}
+        >
           {[
             {
               label: "CURRENT DRY STREAK",
@@ -892,7 +917,6 @@ function RecentAndStreaks({
             <div
               key={s.label}
               style={{
-                marginBottom: 14,
                 borderLeft: `2px solid ${s.color}`,
                 paddingLeft: 10,
               }}
@@ -1002,11 +1026,16 @@ function CalendarSection({ calYear }: { calYear: WeatherObservation[] }) {
 
   return (
     <Frame label="§06 Calendar Heatmap · last 365 days · daily max temperature">
-      <div style={{ padding: "12px 18px", overflowX: "auto" }}>
+      <div
+        style={{
+          padding: "12px 18px",
+          overflowX: "auto",
+        }}
+      >
         <svg
-          width={svgW}
-          height={svgH}
-          style={{ display: "block" }}
+          viewBox={`0 0 ${svgW} ${svgH}`}
+          width="100%"
+          style={{ display: "block", height: "auto" }}
           aria-label="Calendar heatmap"
         >
           {DOW.map((l, i) => (
@@ -1199,11 +1228,16 @@ function YoYSection({
 
   return (
     <Frame label="§08 Year-over-Year · this calendar week ±3 days">
-      <div style={{ padding: "12px 18px", overflowX: "auto" }}>
+      <div
+        style={{
+          padding: "12px 18px",
+          overflowX: "auto",
+        }}
+      >
         <svg
-          width={LABEL_W + BAR_W + 60}
-          height={yoy.length * ROW_H + 10}
-          style={{ display: "block" }}
+          viewBox={`0 0 ${LABEL_W + BAR_W + 60} ${yoy.length * ROW_H + 10}`}
+          width="100%"
+          style={{ display: "block", height: "auto" }}
         >
           {yoy.map((e, i) => {
             const loX = ((e.avgLow - tMin) / range) * BAR_W;
@@ -1307,9 +1341,9 @@ function DistributionsSection({
             Daily Max Temperature Distribution
           </Mono>
           <svg
-            width={tempSvgW}
-            height={BAR_H + 16}
-            style={{ display: "block" }}
+            viewBox={`0 0 ${tempSvgW} ${BAR_H + 16}`}
+            width="100%"
+            style={{ display: "block", height: "auto" }}
           >
             {tempHist.counts.map((count, i) => {
               const h = (count / maxTempCount) * BAR_H;
@@ -1375,9 +1409,9 @@ function DistributionsSection({
             Daily Precipitation Distribution
           </Mono>
           <svg
-            width={precipSvgW}
-            height={BAR_H + 28}
-            style={{ display: "block" }}
+            viewBox={`0 0 ${precipSvgW} ${BAR_H + 28}`}
+            width="100%"
+            style={{ display: "block", height: "auto" }}
           >
             {precipHist.map((b, i) => {
               const h = (b.count / maxPrecipCount) * BAR_H;
