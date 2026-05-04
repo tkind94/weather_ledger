@@ -46,7 +46,11 @@ export function WeatherChartInner({
         trigger: "axis",
         backgroundColor: "rgba(255, 255, 255, 0.95)",
         borderColor: "#e5e7eb",
-        textStyle: { color: "#1f2937", fontSize: 12 },
+        textStyle: {
+          color: "#1f2937",
+          fontSize: 12,
+          fontFamily: "'JetBrains Mono', monospace",
+        },
         formatter: (
           params: Array<{
             seriesName: string;
@@ -77,7 +81,11 @@ export function WeatherChartInner({
       },
       legend: {
         bottom: 0,
-        textStyle: { color: "#6b7280", fontSize: 11 },
+        textStyle: {
+          color: "#6b7280",
+          fontSize: 11,
+          fontFamily: "'JetBrains Mono', monospace",
+        },
       },
       grid: {
         top: 20,
@@ -91,6 +99,7 @@ export function WeatherChartInner({
         axisLabel: {
           color: "#9ca3af",
           fontSize: 10,
+          fontFamily: "'JetBrains Mono', monospace",
           interval,
           formatter: (val: string) => {
             const d = new Date(`${val}T00:00:00Z`);
@@ -105,16 +114,32 @@ export function WeatherChartInner({
         {
           type: "value",
           name: units === "imperial" ? "°F" : "°C",
-          nameTextStyle: { color: "#9ca3af", fontSize: 10 },
-          axisLabel: { color: "#9ca3af", fontSize: 10 },
+          nameTextStyle: {
+            color: "#9ca3af",
+            fontSize: 10,
+            fontFamily: "'JetBrains Mono', monospace",
+          },
+          axisLabel: {
+            color: "#9ca3af",
+            fontSize: 10,
+            fontFamily: "'JetBrains Mono', monospace",
+          },
           axisLine: { show: false },
           splitLine: { lineStyle: { color: "#f3f4f6" } },
         },
         {
           type: "value",
           name: units === "imperial" ? "in" : "mm",
-          nameTextStyle: { color: "#9ca3af", fontSize: 10 },
-          axisLabel: { color: "#9ca3af", fontSize: 10 },
+          nameTextStyle: {
+            color: "#9ca3af",
+            fontSize: 10,
+            fontFamily: "'JetBrains Mono', monospace",
+          },
+          axisLabel: {
+            color: "#9ca3af",
+            fontSize: 10,
+            fontFamily: "'JetBrains Mono', monospace",
+          },
           axisLine: { show: false },
           splitLine: { show: false },
         },

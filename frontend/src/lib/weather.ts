@@ -359,15 +359,27 @@ export function computeTempHistogram(
 
 export function computePrecipHistogram(
   obs: WeatherObservation[],
+  units: "metric" | "imperial",
 ): PrecipBucket[] {
+  const metricLabels = ["dry", "<1mm", "1–5", "5–10", "10–25", "25–50", "50+"];
+  const imperialLabels = [
+    "dry",
+    '<0.04"',
+    "0.04–0.2",
+    "0.2–0.4",
+    "0.4–1.0",
+    "1.0–2.0",
+    "2.0+",
+  ];
+  const labels = units === "imperial" ? imperialLabels : metricLabels;
   const buckets: [number, number, string][] = [
-    [0, 0.1, "dry"],
-    [0.1, 1, "<1mm"],
-    [1, 5, "1–5"],
-    [5, 10, "5–10"],
-    [10, 25, "10–25"],
-    [25, 50, "25–50"],
-    [50, 999, "50+"],
+    [0, 0.1, labels[0]!],
+    [0.1, 1, labels[1]!],
+    [1, 5, labels[2]!],
+    [5, 10, labels[3]!],
+    [10, 25, labels[4]!],
+    [25, 50, labels[5]!],
+    [50, 999, labels[6]!],
   ];
   const counts = buckets.map(() => 0);
   for (const o of obs) {
