@@ -47,6 +47,15 @@ const P = {
   highlight: "#E5C26B",
 } as const;
 
+// ── Font-size scale ──────────────────────────────────────────────────────
+//  7: SVG user-units (scale with viewBox) — calendar DOW/month labels (§06), distribution labels (§09)
+//  8: CSS px — streak labels, calendar gradient scale
+//  9: CSS px or SVG user-units — primary small labels throughout
+// Note: SVG fontSize values are in user units, NOT CSS px. SVG font sizes scale with
+// viewBox width — e.g., fontSize=7 at viewBox 240 vs fontSize=9 at viewBox 356 yield
+// similar rendered sizes because the 240‑wide viewBox makes its user-units proportionally
+// larger relative to the SVG's actual CSS dimensions.
+
 const RANGE_DAYS: Record<"7d" | "30d" | "1y" | "all", number | null> = {
   "7d": 7,
   "30d": 30,
@@ -1101,6 +1110,7 @@ function CalendarSection({ calYear }: { calYear: WeatherObservation[] }) {
           style={{ display: "block", height: "auto" }}
           aria-label="Calendar heatmap"
         >
+          {/* SVG user units (scale with viewBox), ≈7 CSS px at viewBox:svgWidth 1:1 */}
           {DOW.map((l, i) => (
             <text
               key={i}
@@ -1406,7 +1416,10 @@ function DistributionsSection({
           <svg
             viewBox={`0 0 ${tempSvgW} ${BAR_H + 16}`}
             width="100%"
-            style={{ display: "block", height: "auto" }}
+            style={{
+              display: "block",
+              height: "auto",
+            }}
           >
             {tempHist.counts.map((count, i) => {
               const h = (count / maxTempCount) * BAR_H;
@@ -1438,19 +1451,19 @@ function DistributionsSection({
             <text
               x={0}
               y={BAR_H + 13}
+              fill={P.inkSoft}
               fontSize={7}
               fontFamily="'JetBrains Mono', monospace"
-              fill={P.inkSoft}
             >
               {fmtTemp(tempHist.min, units)}
             </text>
             <text
               x={tempSvgW}
               y={BAR_H + 13}
-              fontSize={7}
-              fontFamily="'JetBrains Mono', monospace"
               fill={P.inkSoft}
               textAnchor="end"
+              fontSize={7}
+              fontFamily="'JetBrains Mono', monospace"
             >
               {fmtTemp(tempHist.max, units)}
             </text>
@@ -1474,7 +1487,10 @@ function DistributionsSection({
           <svg
             viewBox={`0 0 ${precipSvgW} ${BAR_H + 28}`}
             width="100%"
-            style={{ display: "block", height: "auto" }}
+            style={{
+              display: "block",
+              height: "auto",
+            }}
           >
             {precipHist.map((b, i) => {
               const h = (b.count / maxPrecipCount) * BAR_H;
@@ -1496,20 +1512,20 @@ function DistributionsSection({
                   <text
                     x={i * (PRECIP_W + GAP) + PRECIP_W / 2}
                     y={BAR_H + 11}
-                    fontSize={7}
-                    fontFamily="'JetBrains Mono', monospace"
                     fill={P.inkSoft}
                     textAnchor="middle"
+                    fontSize={7}
+                    fontFamily="'JetBrains Mono', monospace"
                   >
                     {b.label}
                   </text>
                   <text
                     x={i * (PRECIP_W + GAP) + PRECIP_W / 2}
                     y={BAR_H + 22}
-                    fontSize={7}
-                    fontFamily="'JetBrains Mono', monospace"
                     fill={P.mute}
                     textAnchor="middle"
+                    fontSize={7}
+                    fontFamily="'JetBrains Mono', monospace"
                   >
                     {b.count}
                   </text>
@@ -1625,8 +1641,8 @@ export function Dashboard() {
     [observations],
   );
   const precipHist = useMemo(
-    () => computePrecipHistogram(observations),
-    [observations],
+    () => computePrecipHistogram(observations, units),
+    [observations, units],
   );
   const calYear = useMemo(
     () => computeCalendarYear(observations),
