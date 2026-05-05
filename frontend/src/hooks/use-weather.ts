@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useWeather } from "@/lib/state";
 import * as storage from "@/lib/storage";
-import { getPreference } from "@/lib/storage";
+import { getPreference, setPreference } from "@/lib/storage";
 import * as openMeteo from "@/lib/open-meteo";
-import { summarizeObservations, type LocationSeed } from "@/lib/weather";
+import {
+  summarizeObservations,
+  type LocationRecord,
+  type LocationSeed,
+  type WeatherObservation,
+} from "@/lib/weather";
 
 const DEFAULT_LOCATION: LocationSeed = {
   locationKey: "40.5852,-105.0844",
@@ -26,6 +31,35 @@ function oneYearAgoISO(): string {
   return d.toISOString().slice(0, 10);
 }
 
+function buildLocationRecord(
+  seed: LocationSeed,
+  observations: WeatherObservation[],
+): LocationRecord {
+  const first = observations[0]?.weatherDate ?? null;
+  const last = observations[observations.length - 1]?.weatherDate ?? null;
+  return {
+    ...seed,
+    observationCount: observations.length,
+    firstObservationDate: first,
+    latestObservationDate: last,
+    lastFetchedAt: new Date().toISOString(),
+  };
+}
+
+async function fetchAndStore(
+  seed: LocationSeed,
+): Promise<{ record: LocationRecord; observations: WeatherObservation[] }> {
+  const observations = await openMeteo.fetchLocationWeather(
+    seed,
+    oneYearAgoISO(),
+    todayISO(),
+  );
+  await storage.putObservations(seed.locationKey, observations);
+  const record = buildLocationRecord(seed, observations);
+  await storage.putLocation(record);
+  return { record, observations };
+}
+
 export function useWeatherActions() {
   const { state, dispatch } = useWeather();
 
@@ -41,6 +75,7 @@ export function useWeatherActions() {
         const observations = await storage.getObservations(locationKey);
         const summary = summarizeObservations(observations);
         dispatch({ type: "SELECT_LOCATION", location, observations, summary });
+        setPreference("selectedLocation", locationKey);
       } catch (err) {
         dispatch({
           type: "SET_ERROR",
@@ -56,31 +91,10 @@ export function useWeatherActions() {
   const loadLocations = useCallback(async () => {
     dispatch({ type: "SET_LOADING", loading: true });
     try {
-      const locations = await storage.getAllLocations();
-      if (locations.length === 0) {
-        // Seed default location
-        const observations = await openMeteo.fetchLocationWeather(
-          DEFAULT_LOCATION,
-          oneYearAgoISO(),
-          todayISO(),
-        );
-        await storage.putObservations(
-          DEFAULT_LOCATION.locationKey,
-          observations,
-        );
+      const cached = await storage.getAllLocations();
+      if (cached.length === 0) {
+        const { record, observations } = await fetchAndStore(DEFAULT_LOCATION);
         const summary = summarizeObservations(observations);
-        const record = {
-          ...DEFAULT_LOCATION,
-          observationCount: observations.length,
-          firstObservationDate:
-            observations.length > 0 ? observations[0]!.weatherDate : null,
-          latestObservationDate:
-            observations.length > 0
-              ? observations[observations.length - 1]!.weatherDate
-              : null,
-          lastFetchedAt: new Date().toISOString(),
-        };
-        await storage.putLocation(record);
         dispatch({ type: "SET_LOCATIONS", locations: [record] });
         dispatch({
           type: "SELECT_LOCATION",
@@ -88,13 +102,13 @@ export function useWeatherActions() {
           observations,
           summary,
         });
-      } else {
-        dispatch({ type: "SET_LOCATIONS", locations });
-        // Restore last selected location from persisted preference
-        const savedKey = getPreference("selectedLocation");
-        if (savedKey && locations.some((l) => l.locationKey === savedKey)) {
-          await selectLocation(savedKey);
-        }
+        setPreference("selectedLocation", record.locationKey);
+        return;
+      }
+      dispatch({ type: "SET_LOCATIONS", locations: cached });
+      const savedKey = getPreference("selectedLocation");
+      if (savedKey && cached.some((l) => l.locationKey === savedKey)) {
+        await selectLocation(savedKey);
       }
     } catch (err) {
       dispatch({
@@ -106,41 +120,12 @@ export function useWeatherActions() {
     }
   }, [dispatch, selectLocation]);
 
-  const searchLocations = useCallback(
-    async (query: string) => {
-      const remoteResults = await openMeteo.searchRemoteLocations(query);
-      const cachedKeys = new Set(state.locations.map((l) => l.locationKey));
-      return remoteResults.map((loc) => ({
-        ...loc,
-        isCached: cachedKeys.has(loc.locationKey),
-      }));
-    },
-    [state.locations],
-  );
-
   const cacheLocation = useCallback(
     async (location: LocationSeed) => {
       dispatch({ type: "SET_LOADING", loading: true });
       try {
-        const observations = await openMeteo.fetchLocationWeather(
-          location,
-          oneYearAgoISO(),
-          todayISO(),
-        );
-        await storage.putObservations(location.locationKey, observations);
+        const { record, observations } = await fetchAndStore(location);
         const summary = summarizeObservations(observations);
-        const record = {
-          ...location,
-          observationCount: observations.length,
-          firstObservationDate:
-            observations.length > 0 ? observations[0]!.weatherDate : null,
-          latestObservationDate:
-            observations.length > 0
-              ? observations[observations.length - 1]!.weatherDate
-              : null,
-          lastFetchedAt: new Date().toISOString(),
-        };
-        await storage.putLocation(record);
         dispatch({ type: "ADD_LOCATION", location: record });
         dispatch({
           type: "SELECT_LOCATION",
@@ -148,6 +133,7 @@ export function useWeatherActions() {
           observations,
           summary,
         });
+        setPreference("selectedLocation", record.locationKey);
         return record;
       } catch (err) {
         dispatch({
@@ -167,31 +153,14 @@ export function useWeatherActions() {
     if (!state.selectedLocation) return;
     dispatch({ type: "SET_LOADING", loading: true });
     try {
-      const loc = state.selectedLocation;
-      const observations = await openMeteo.fetchLocationWeather(
-        loc,
-        oneYearAgoISO(),
-        todayISO(),
+      const { record, observations } = await fetchAndStore(
+        state.selectedLocation,
       );
-      await storage.putObservations(loc.locationKey, observations);
       const summary = summarizeObservations(observations);
-      const record = {
-        ...loc,
-        observationCount: observations.length,
-        firstObservationDate:
-          observations.length > 0 ? observations[0]!.weatherDate : null,
-        latestObservationDate:
-          observations.length > 0
-            ? observations[observations.length - 1]!.weatherDate
-            : null,
-        lastFetchedAt: new Date().toISOString(),
-      };
-      await storage.putLocation(record);
-      // Update the location in the list
-      const updatedLocations = state.locations.map((l) =>
+      const updated = state.locations.map((l) =>
         l.locationKey === record.locationKey ? record : l,
       );
-      dispatch({ type: "SET_LOCATIONS", locations: updatedLocations });
+      dispatch({ type: "SET_LOCATIONS", locations: updated });
       dispatch({
         type: "SELECT_LOCATION",
         location: record,
@@ -207,6 +176,18 @@ export function useWeatherActions() {
       dispatch({ type: "SET_LOADING", loading: false });
     }
   }, [state.selectedLocation, state.locations, dispatch]);
+
+  const searchLocations = useCallback(
+    async (query: string) => {
+      const remote = await openMeteo.searchRemoteLocations(query);
+      const cached = new Set(state.locations.map((l) => l.locationKey));
+      return remote.map((loc) => ({
+        ...loc,
+        isCached: cached.has(loc.locationKey),
+      }));
+    },
+    [state.locations],
+  );
 
   const deleteLocation = useCallback(
     async (locationKey: string) => {

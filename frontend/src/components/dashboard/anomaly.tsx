@@ -1,0 +1,37 @@
+import { cn } from "@/lib/utils";
+import type { Anomaly } from "@/lib/weather";
+import { Caption } from "./primitives";
+import { fmtTemp, fmtTempDelta, type Units } from "./format";
+
+export function AnomalyBanner({
+  anomaly,
+  units,
+}: {
+  anomaly: Anomaly;
+  units: Units;
+}) {
+  const warmer = anomaly.label === "warmer";
+  const tone = warmer ? "hot" : "cold";
+  const sign = anomaly.delta >= 0 ? "+" : "";
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-3 border px-3.5 py-2",
+        warmer ? "border-hot bg-hot/[0.07]" : "border-cold bg-cold/[0.07]",
+      )}
+    >
+      <Caption tone={tone} tracking="0.18em" inline>
+        ANOMALY
+      </Caption>
+      <span className="font-display text-[13px] text-ink">
+        Last 7 days avg high{" "}
+        <strong className={warmer ? "text-hot" : "text-cold"}>
+          {sign}
+          {fmtTempDelta(anomaly.delta, units)}
+        </strong>{" "}
+        vs same week last year ({fmtTemp(anomaly.currentAvgHigh, units)} vs{" "}
+        {fmtTemp(anomaly.lastYearAvgHigh, units)})
+      </span>
+    </div>
+  );
+}
