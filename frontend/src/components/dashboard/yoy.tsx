@@ -1,78 +1,101 @@
+import { useMemo } from "react";
+import ReactECharts from "echarts-for-react";
 import type { YoYEntry } from "@/lib/weather";
+import { monoText, tooltipBase } from "@/lib/echarts-theme";
 import { Frame } from "./primitives";
 import { fmtTemp, palette, type Units } from "./format";
 
-const ROW_H = 22;
-const BAR_W = 260;
-const LABEL_W = 36;
-const MONO_FONT = "'JetBrains Mono', monospace";
-
 export function YoYSection({ yoy, units }: { yoy: YoYEntry[]; units: Units }) {
-  if (yoy.length === 0) return null;
+  const option = useMemo(() => {
+    if (yoy.length === 0) return null;
+    const allTemps = yoy.flatMap((e) => [e.avgHigh, e.avgLow]);
+    const tMin = Math.min(...allTemps);
+    const tMax = Math.max(...allTemps);
 
-  const allTemps = yoy.flatMap((e) => [e.avgHigh, e.avgLow]);
-  const tMin = Math.min(...allTemps);
-  const tMax = Math.max(...allTemps);
-  const span = tMax - tMin || 1;
-  const svgW = LABEL_W + BAR_W + 60;
-  const svgH = yoy.length * ROW_H + 10;
+    // Two stacked horizontal bars per year:
+    //   pad   — invisible, runs from xAxis 0 up to (avgLow - tMin)
+    //   range — visible, runs from there to (avgHigh - tMin)
+    // Hot color hints daily diurnal range, cold gives leading offset.
+    const years = yoy.map((e) => String(e.year));
+    const padData = yoy.map((e) => +(e.avgLow - tMin).toFixed(2));
+    const rangeData = yoy.map((e) => +(e.avgHigh - e.avgLow).toFixed(2));
+
+    return {
+      grid: { top: 8, bottom: 8, left: 44, right: 96 },
+      tooltip: {
+        ...tooltipBase,
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        formatter: (params: Array<{ dataIndex: number }>) => {
+          const i = params[0]?.dataIndex ?? 0;
+          const e = yoy[i]!;
+          return `${e.year} · high ${fmtTemp(e.avgHigh, units)} / low ${fmtTemp(e.avgLow, units)}`;
+        },
+      },
+      xAxis: {
+        type: "value",
+        min: 0,
+        max: +(tMax - tMin).toFixed(2),
+        show: false,
+      },
+      yAxis: {
+        type: "category",
+        data: years,
+        inverse: false,
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: { ...monoText, fontSize: 10 },
+      },
+      series: [
+        {
+          name: "pad",
+          type: "bar",
+          stack: "yoy",
+          data: padData,
+          itemStyle: {
+            color: palette.cold,
+            opacity: 0.45,
+            borderRadius: [1, 0, 0, 1],
+          },
+          silent: true,
+          barCategoryGap: "30%",
+        },
+        {
+          name: "range",
+          type: "bar",
+          stack: "yoy",
+          data: rangeData,
+          itemStyle: {
+            color: palette.hot,
+            opacity: 0.7,
+            borderRadius: [0, 1, 1, 0],
+          },
+          label: {
+            show: true,
+            position: "right",
+            ...monoText,
+            fontSize: 10,
+            formatter: ({ dataIndex }: { dataIndex: number }) => {
+              const e = yoy[dataIndex]!;
+              return `${fmtTemp(e.avgHigh, units)} / ${fmtTemp(e.avgLow, units)}`;
+            },
+          },
+        },
+      ],
+    };
+  }, [yoy, units]);
+
+  if (!option) return null;
+  const height = Math.max(120, yoy.length * 30 + 16);
 
   return (
     <Frame label="§08 Year-over-Year · this calendar week ±3 days">
-      <div className="overflow-x-auto px-[18px] py-3">
-        <svg
-          viewBox={`0 0 ${svgW} ${svgH}`}
-          width="100%"
-          className="block h-auto"
-        >
-          {yoy.map((e, i) => {
-            const loX = ((e.avgLow - tMin) / span) * BAR_W;
-            const hiX = ((e.avgHigh - tMin) / span) * BAR_W;
-            const y = i * ROW_H;
-            const baseline = y + ROW_H * 0.72;
-            return (
-              <g key={e.year}>
-                <text
-                  x={LABEL_W - 4}
-                  y={baseline}
-                  fontSize={9}
-                  fontFamily={MONO_FONT}
-                  fill={palette.inkSoft}
-                  textAnchor="end"
-                >
-                  {e.year}
-                </text>
-                <rect
-                  x={LABEL_W}
-                  y={y + 4}
-                  width={loX}
-                  height={ROW_H - 8}
-                  fill={palette.cold}
-                  fillOpacity={0.45}
-                  rx={1}
-                />
-                <rect
-                  x={LABEL_W + loX}
-                  y={y + 4}
-                  width={Math.max(0, hiX - loX)}
-                  height={ROW_H - 8}
-                  fill={palette.hot}
-                  fillOpacity={0.65}
-                  rx={1}
-                />
-                <text
-                  x={LABEL_W + hiX + 5}
-                  y={baseline}
-                  fontSize={9}
-                  fontFamily={MONO_FONT}
-                  fill={palette.inkSoft}
-                >
-                  {fmtTemp(e.avgHigh, units)} / {fmtTemp(e.avgLow, units)}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
+      <div className="px-[18px] py-3">
+        <ReactECharts
+          option={option}
+          style={{ height, width: "100%" }}
+          opts={{ renderer: "svg" }}
+        />
       </div>
     </Frame>
   );

@@ -1,11 +1,23 @@
 import { useMemo } from "react";
 import ReactECharts from "echarts-for-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { WeatherObservation } from "@/lib/weather";
+import { palette } from "@/lib/theme";
+import { monoText, splitLine, tooltipBase } from "@/lib/echarts-theme";
+import { Frame } from "@/components/dashboard/primitives";
 
 interface WeatherChartInnerProps {
   observations: WeatherObservation[];
   units: "metric" | "imperial";
+}
+
+const TEMP_UNIT = { metric: "°C", imperial: "°F" } as const;
+const PRECIP_UNIT = { metric: "mm", imperial: "in" } as const;
+
+function pickInterval(n: number): number {
+  if (n <= 7) return 0;
+  if (n <= 30) return 3;
+  if (n <= 90) return 7;
+  return 14;
 }
 
 export function WeatherChartInner({
@@ -13,44 +25,25 @@ export function WeatherChartInner({
   units,
 }: WeatherChartInnerProps) {
   const option = useMemo(() => {
-    const dates = observations.map((obs) => obs.weatherDate);
-    const maxTemps = observations.map((obs) =>
-      units === "imperial"
-        ? (obs.maxTemperature * 9) / 5 + 32
-        : obs.maxTemperature,
-    );
-    const minTemps = observations.map((obs) =>
-      units === "imperial"
-        ? (obs.minTemperature * 9) / 5 + 32
-        : obs.minTemperature,
-    );
-    const precips = observations.map((obs) =>
-      units === "imperial" ? obs.precipitation / 25.4 : obs.precipitation,
-    );
+    const dates = observations.map((o) => o.weatherDate);
+    const cToUnit = (c: number) =>
+      units === "imperial" ? (c * 9) / 5 + 32 : c;
+    const mmToUnit = (mm: number) => (units === "imperial" ? mm / 25.4 : mm);
 
-    const n = dates.length;
-    let interval: number;
-    if (n <= 7) {
-      interval = 0;
-    } else if (n <= 30) {
-      interval = 3;
-    } else if (n <= 90) {
-      interval = 7;
-    } else {
-      interval = 14;
-    }
-    const showYear = n > 90;
+    const maxTemps = observations.map((o) => cToUnit(o.maxTemperature));
+    const minTemps = observations.map((o) => cToUnit(o.minTemperature));
+    const precips = observations.map((o) => mmToUnit(o.precipitation));
+
+    const interval = pickInterval(dates.length);
+    const showYear = dates.length > 90;
+
+    const tempUnit = TEMP_UNIT[units];
+    const precipUnit = PRECIP_UNIT[units];
 
     return {
       tooltip: {
+        ...tooltipBase,
         trigger: "axis",
-        backgroundColor: "rgba(255, 255, 255, 0.95)",
-        borderColor: "#e5e7eb",
-        textStyle: {
-          color: "#1f2937",
-          fontSize: 12,
-          fontFamily: "'JetBrains Mono', monospace",
-        },
         formatter: (
           params: Array<{
             seriesName: string;
@@ -61,45 +54,24 @@ export function WeatherChartInner({
         ) => {
           if (!params.length) return "";
           const date = params[0]!.axisValue;
-          let html = `<div style="font-weight:600;margin-bottom:4px">${date}</div>`;
-          for (const p of params) {
-            const unit =
-              p.seriesName === "Precipitation"
-                ? units === "imperial"
-                  ? " in"
-                  : " mm"
-                : units === "imperial"
-                  ? "°F"
-                  : "°C";
-            html += `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">
-              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
-              <span>${p.seriesName}: ${p.value.toFixed(1)}${unit}</span>
-            </div>`;
-          }
-          return html;
+          const lines = params
+            .map((p) => {
+              const unit =
+                p.seriesName === "Precipitation" ? ` ${precipUnit}` : tempUnit;
+              const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:6px"></span>`;
+              return `<div>${dot}${p.seriesName}: ${p.value.toFixed(1)}${unit}</div>`;
+            })
+            .join("");
+          return `<div style="font-weight:600;margin-bottom:4px">${date}</div>${lines}`;
         },
       },
-      legend: {
-        bottom: 0,
-        textStyle: {
-          color: "#6b7280",
-          fontSize: 11,
-          fontFamily: "'JetBrains Mono', monospace",
-        },
-      },
-      grid: {
-        top: 20,
-        right: 60,
-        bottom: 40,
-        left: 50,
-      },
+      legend: { bottom: 0, textStyle: { ...monoText, fontSize: 10 } },
+      grid: { top: 20, right: 60, bottom: 40, left: 50 },
       xAxis: {
         type: "category",
         data: dates,
         axisLabel: {
-          color: "#9ca3af",
-          fontSize: 10,
-          fontFamily: "'JetBrains Mono', monospace",
+          ...monoText,
           interval,
           formatter: (val: string) => {
             const d = new Date(`${val}T00:00:00Z`);
@@ -107,39 +79,23 @@ export function WeatherChartInner({
             return showYear ? `${m}/${d.getUTCFullYear() % 100}` : m;
           },
         },
-        axisLine: { lineStyle: { color: "#e5e7eb" } },
+        axisLine: { lineStyle: { color: palette.faint } },
         splitLine: { show: false },
       },
       yAxis: [
         {
           type: "value",
-          name: units === "imperial" ? "°F" : "°C",
-          nameTextStyle: {
-            color: "#9ca3af",
-            fontSize: 10,
-            fontFamily: "'JetBrains Mono', monospace",
-          },
-          axisLabel: {
-            color: "#9ca3af",
-            fontSize: 10,
-            fontFamily: "'JetBrains Mono', monospace",
-          },
+          name: tempUnit,
+          nameTextStyle: { ...monoText, fontSize: 9 },
+          axisLabel: monoText,
           axisLine: { show: false },
-          splitLine: { lineStyle: { color: "#f3f4f6" } },
+          splitLine,
         },
         {
           type: "value",
-          name: units === "imperial" ? "in" : "mm",
-          nameTextStyle: {
-            color: "#9ca3af",
-            fontSize: 10,
-            fontFamily: "'JetBrains Mono', monospace",
-          },
-          axisLabel: {
-            color: "#9ca3af",
-            fontSize: 10,
-            fontFamily: "'JetBrains Mono', monospace",
-          },
+          name: precipUnit,
+          nameTextStyle: { ...monoText, fontSize: 9 },
+          axisLabel: monoText,
           axisLine: { show: false },
           splitLine: { show: false },
         },
@@ -151,8 +107,8 @@ export function WeatherChartInner({
           data: maxTemps,
           smooth: true,
           yAxisIndex: 0,
-          lineStyle: { width: 2, color: "#e76f51" },
-          itemStyle: { color: "#e76f51" },
+          lineStyle: { width: 2, color: palette.hot },
+          itemStyle: { color: palette.hot },
           areaStyle: {
             color: {
               type: "linear",
@@ -161,8 +117,8 @@ export function WeatherChartInner({
               x2: 0,
               y2: 1,
               colorStops: [
-                { offset: 0, color: "rgba(231, 111, 81, 0.15)" },
-                { offset: 1, color: "rgba(231, 111, 81, 0)" },
+                { offset: 0, color: `${palette.hot}33` },
+                { offset: 1, color: `${palette.hot}00` },
               ],
             },
           },
@@ -174,8 +130,8 @@ export function WeatherChartInner({
           data: minTemps,
           smooth: true,
           yAxisIndex: 0,
-          lineStyle: { width: 2, color: "#457b9d" },
-          itemStyle: { color: "#457b9d" },
+          lineStyle: { width: 2, color: palette.cold },
+          itemStyle: { color: palette.cold },
           areaStyle: {
             color: {
               type: "linear",
@@ -184,8 +140,8 @@ export function WeatherChartInner({
               x2: 0,
               y2: 1,
               colorStops: [
-                { offset: 0, color: "rgba(69, 123, 157, 0.1)" },
-                { offset: 1, color: "rgba(69, 123, 157, 0)" },
+                { offset: 0, color: `${palette.cold}26` },
+                { offset: 1, color: `${palette.cold}00` },
               ],
             },
           },
@@ -196,7 +152,7 @@ export function WeatherChartInner({
           type: "bar",
           data: precips,
           yAxisIndex: 1,
-          itemStyle: { color: "rgba(148, 163, 184, 0.4)" },
+          itemStyle: { color: palette.sage, opacity: 0.6 },
           barMaxWidth: 6,
         },
       ],
@@ -204,18 +160,10 @@ export function WeatherChartInner({
   }, [observations, units]);
 
   return (
-    <Card className="rounded-2xl border shadow-sm">
-      <CardHeader>
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Trends
-        </p>
-        <CardTitle className="font-serif text-xl">
-          Temperature & precipitation
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
+    <Frame label="§03 Trends · temperature & precipitation">
+      <div className="px-[18px] py-3">
         {observations.length === 0 ? (
-          <div className="flex h-[300px] items-center justify-center text-muted-foreground">
+          <div className="flex h-[300px] items-center justify-center font-mono text-[11px] text-ink-soft">
             No data available
           </div>
         ) : (
@@ -225,7 +173,7 @@ export function WeatherChartInner({
             opts={{ renderer: "svg" }}
           />
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Frame>
   );
 }
