@@ -28,17 +28,6 @@ export type LocationRecord = LocationSeed & {
   lastFetchedAt: string | null;
 };
 
-export type DashboardSummary = {
-  observationCount: number;
-  avgHigh: number | null;
-  avgLow: number | null;
-  totalPrecipitation: number;
-  hottestDate: string | null;
-  hottestTemperature: number | null;
-  wettestDate: string | null;
-  wettestPrecipitation: number | null;
-};
-
 export function buildLocationLabel(parts: {
   name: string;
   admin1?: string | null;
@@ -453,57 +442,5 @@ export function computeRangeAgg(
     totalPrecip: sumP,
     hottest: { date: hiDate, temp: hi },
     coldest: { date: loDate, temp: lo },
-  };
-}
-
-export function summarizeObservations(
-  observations: WeatherObservation[],
-): DashboardSummary {
-  if (observations.length === 0) {
-    return {
-      observationCount: 0,
-      avgHigh: null,
-      avgLow: null,
-      totalPrecipitation: 0,
-      hottestDate: null,
-      hottestTemperature: null,
-      wettestDate: null,
-      wettestPrecipitation: null,
-    };
-  }
-
-  let sumHigh = 0;
-  let sumLow = 0;
-  let totalPrecip = 0;
-  let hottestDate: string | null = null;
-  let hottestTemp: number | null = null;
-  let wettestDate: string | null = null;
-  let wettestPrecip: number | null = null;
-
-  for (const obs of observations) {
-    sumHigh += obs.maxTemperature;
-    sumLow += obs.minTemperature;
-    totalPrecip += obs.precipitation;
-
-    if (hottestTemp === null || obs.maxTemperature > hottestTemp) {
-      hottestTemp = obs.maxTemperature;
-      hottestDate = obs.weatherDate;
-    }
-
-    if (wettestPrecip === null || obs.precipitation > wettestPrecip) {
-      wettestPrecip = obs.precipitation;
-      wettestDate = obs.weatherDate;
-    }
-  }
-
-  return {
-    observationCount: observations.length,
-    avgHigh: sumHigh / observations.length,
-    avgLow: sumLow / observations.length,
-    totalPrecipitation: totalPrecip,
-    hottestDate,
-    hottestTemperature: hottestTemp,
-    wettestDate,
-    wettestPrecipitation: wettestPrecip,
   };
 }

@@ -1,16 +1,11 @@
 import { createContext, useContext, useReducer, type ReactNode } from "react";
-import type {
-  LocationRecord,
-  WeatherObservation,
-  DashboardSummary,
-} from "./weather";
+import type { LocationRecord, WeatherObservation } from "./weather";
 
 type AppState = {
   locations: LocationRecord[];
   selectedLocation: LocationRecord | null;
   observations: WeatherObservation[];
-  summary: DashboardSummary | null;
-  loading: boolean;
+  pending: number;
   error: string | null;
 };
 
@@ -20,11 +15,11 @@ type Action =
       type: "SELECT_LOCATION";
       location: LocationRecord;
       observations: WeatherObservation[];
-      summary: DashboardSummary;
     }
   | { type: "ADD_LOCATION"; location: LocationRecord }
   | { type: "REMOVE_LOCATION"; locationKey: string }
-  | { type: "SET_LOADING"; loading: boolean }
+  | { type: "BEGIN_PENDING" }
+  | { type: "END_PENDING" }
   | { type: "SET_ERROR"; error: string | null }
   | { type: "CLEAR_SELECTION" };
 
@@ -32,8 +27,7 @@ const initialState: AppState = {
   locations: [],
   selectedLocation: null,
   observations: [],
-  summary: null,
-  loading: false,
+  pending: 0,
   error: null,
 };
 
@@ -46,41 +40,30 @@ function weatherReducer(state: AppState, action: Action): AppState {
         ...state,
         selectedLocation: action.location,
         observations: action.observations,
-        summary: action.summary,
         error: null,
       };
     case "ADD_LOCATION":
       return { ...state, locations: [...state.locations, action.location] };
-    case "REMOVE_LOCATION":
+    case "REMOVE_LOCATION": {
+      const wasSelected =
+        state.selectedLocation?.locationKey === action.locationKey;
       return {
         ...state,
         locations: state.locations.filter(
           (loc) => loc.locationKey !== action.locationKey,
         ),
-        selectedLocation:
-          state.selectedLocation?.locationKey === action.locationKey
-            ? null
-            : state.selectedLocation,
-        observations:
-          state.selectedLocation?.locationKey === action.locationKey
-            ? []
-            : state.observations,
-        summary:
-          state.selectedLocation?.locationKey === action.locationKey
-            ? null
-            : state.summary,
+        selectedLocation: wasSelected ? null : state.selectedLocation,
+        observations: wasSelected ? [] : state.observations,
       };
-    case "SET_LOADING":
-      return { ...state, loading: action.loading };
+    }
+    case "BEGIN_PENDING":
+      return { ...state, pending: state.pending + 1 };
+    case "END_PENDING":
+      return { ...state, pending: Math.max(0, state.pending - 1) };
     case "SET_ERROR":
       return { ...state, error: action.error };
     case "CLEAR_SELECTION":
-      return {
-        ...state,
-        selectedLocation: null,
-        observations: [],
-        summary: null,
-      };
+      return { ...state, selectedLocation: null, observations: [] };
     default:
       return state;
   }

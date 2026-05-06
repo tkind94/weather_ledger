@@ -73,7 +73,8 @@ export function Dashboard() {
     deleteLocation,
   } = useWeatherActions();
 
-  const { selectedLocation, observations, locations, loading, error } = state;
+  const { selectedLocation, observations, locations, pending, error } = state;
+  const loading = pending > 0;
 
   const [units, setUnitsState] = useState<Units>(() =>
     readPref<Units>("units", "metric", UNITS_VALUES),

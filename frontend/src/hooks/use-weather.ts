@@ -3,11 +3,10 @@ import { useWeather } from "@/lib/state";
 import * as storage from "@/lib/storage";
 import { getPreference, setPreference } from "@/lib/storage";
 import * as openMeteo from "@/lib/open-meteo";
-import {
-  summarizeObservations,
-  type LocationRecord,
-  type LocationSeed,
-  type WeatherObservation,
+import type {
+  LocationRecord,
+  LocationSeed,
+  WeatherObservation,
 } from "@/lib/weather";
 
 const DEFAULT_LOCATION: LocationSeed = {
@@ -63,119 +62,99 @@ async function fetchAndStore(
 export function useWeatherActions() {
   const { state, dispatch } = useWeather();
 
-  const selectLocation = useCallback(
-    async (locationKey: string) => {
-      dispatch({ type: "SET_LOADING", loading: true });
+  const runPending = useCallback(
+    async <T>(fn: () => Promise<T>, errFallback: string): Promise<T | null> => {
+      dispatch({ type: "BEGIN_PENDING" });
       try {
+        return await fn();
+      } catch (err) {
+        dispatch({
+          type: "SET_ERROR",
+          error: err instanceof Error ? err.message : errFallback,
+        });
+        return null;
+      } finally {
+        dispatch({ type: "END_PENDING" });
+      }
+    },
+    [dispatch],
+  );
+
+  const selectLocation = useCallback(
+    (locationKey: string) =>
+      runPending(async () => {
         const location = await storage.getLocation(locationKey);
         if (!location) {
           dispatch({ type: "SET_ERROR", error: "Location not found" });
           return;
         }
         const observations = await storage.getObservations(locationKey);
-        const summary = summarizeObservations(observations);
-        dispatch({ type: "SELECT_LOCATION", location, observations, summary });
+        dispatch({ type: "SELECT_LOCATION", location, observations });
         setPreference("selectedLocation", locationKey);
-      } catch (err) {
-        dispatch({
-          type: "SET_ERROR",
-          error: err instanceof Error ? err.message : "Failed to load location",
-        });
-      } finally {
-        dispatch({ type: "SET_LOADING", loading: false });
-      }
-    },
-    [dispatch],
+      }, "Failed to load location"),
+    [dispatch, runPending],
   );
 
-  const loadLocations = useCallback(async () => {
-    dispatch({ type: "SET_LOADING", loading: true });
-    try {
-      const cached = await storage.getAllLocations();
-      if (cached.length === 0) {
-        const { record, observations } = await fetchAndStore(DEFAULT_LOCATION);
-        const summary = summarizeObservations(observations);
-        dispatch({ type: "SET_LOCATIONS", locations: [record] });
-        dispatch({
-          type: "SELECT_LOCATION",
-          location: record,
-          observations,
-          summary,
-        });
-        setPreference("selectedLocation", record.locationKey);
-        return;
-      }
-      dispatch({ type: "SET_LOCATIONS", locations: cached });
-      const savedKey = getPreference("selectedLocation");
-      if (savedKey && cached.some((l) => l.locationKey === savedKey)) {
-        await selectLocation(savedKey);
-      }
-    } catch (err) {
-      dispatch({
-        type: "SET_ERROR",
-        error: err instanceof Error ? err.message : "Failed to load locations",
-      });
-    } finally {
-      dispatch({ type: "SET_LOADING", loading: false });
-    }
-  }, [dispatch, selectLocation]);
+  const loadLocations = useCallback(
+    () =>
+      runPending(async () => {
+        const cached = await storage.getAllLocations();
+        if (cached.length === 0) {
+          const { record, observations } =
+            await fetchAndStore(DEFAULT_LOCATION);
+          dispatch({ type: "SET_LOCATIONS", locations: [record] });
+          dispatch({
+            type: "SELECT_LOCATION",
+            location: record,
+            observations,
+          });
+          setPreference("selectedLocation", record.locationKey);
+          return;
+        }
+        dispatch({ type: "SET_LOCATIONS", locations: cached });
+        const savedKey = getPreference("selectedLocation");
+        if (savedKey && cached.some((l) => l.locationKey === savedKey)) {
+          await selectLocation(savedKey);
+        }
+      }, "Failed to load locations"),
+    [dispatch, runPending, selectLocation],
+  );
 
   const cacheLocation = useCallback(
-    async (location: LocationSeed) => {
-      dispatch({ type: "SET_LOADING", loading: true });
-      try {
+    (location: LocationSeed) =>
+      runPending(async () => {
         const { record, observations } = await fetchAndStore(location);
-        const summary = summarizeObservations(observations);
         dispatch({ type: "ADD_LOCATION", location: record });
         dispatch({
           type: "SELECT_LOCATION",
           location: record,
           observations,
-          summary,
         });
         setPreference("selectedLocation", record.locationKey);
         return record;
-      } catch (err) {
-        dispatch({
-          type: "SET_ERROR",
-          error:
-            err instanceof Error ? err.message : "Failed to cache location",
-        });
-        throw err;
-      } finally {
-        dispatch({ type: "SET_LOADING", loading: false });
-      }
-    },
-    [dispatch],
+      }, "Failed to cache location"),
+    [dispatch, runPending],
   );
 
-  const refreshCurrentLocation = useCallback(async () => {
-    if (!state.selectedLocation) return;
-    dispatch({ type: "SET_LOADING", loading: true });
-    try {
-      const { record, observations } = await fetchAndStore(
-        state.selectedLocation,
-      );
-      const summary = summarizeObservations(observations);
-      const updated = state.locations.map((l) =>
-        l.locationKey === record.locationKey ? record : l,
-      );
-      dispatch({ type: "SET_LOCATIONS", locations: updated });
-      dispatch({
-        type: "SELECT_LOCATION",
-        location: record,
-        observations,
-        summary,
-      });
-    } catch (err) {
-      dispatch({
-        type: "SET_ERROR",
-        error: err instanceof Error ? err.message : "Failed to refresh",
-      });
-    } finally {
-      dispatch({ type: "SET_LOADING", loading: false });
-    }
-  }, [state.selectedLocation, state.locations, dispatch]);
+  const refreshCurrentLocation = useCallback(
+    () =>
+      runPending(async () => {
+        if (!state.selectedLocation) return;
+        const { record, observations } = await fetchAndStore(
+          state.selectedLocation,
+        );
+        const updated = state.locations.map((l) =>
+          l.locationKey === record.locationKey ? record : l,
+        );
+        dispatch({ type: "SET_LOCATIONS", locations: updated });
+        dispatch({
+          type: "SELECT_LOCATION",
+          location: record,
+          observations,
+        });
+      }, "Failed to refresh"),
+    [state.selectedLocation, state.locations, dispatch, runPending],
+  );
 
   const searchLocations = useCallback(
     async (query: string) => {

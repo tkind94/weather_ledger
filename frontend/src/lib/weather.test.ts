@@ -3,7 +3,6 @@ import {
   buildLocationLabel,
   coordinateCacheKey,
   canonicalizeLocationSeed,
-  summarizeObservations,
   computeTodayVsHistorical,
   type WeatherObservation,
 } from "./weather";
@@ -77,65 +76,6 @@ describe("canonicalizeLocationSeed", () => {
     });
     expect(seed.admin1).toBeNull();
     expect(seed.country).toBeNull();
-  });
-});
-
-describe("summarizeObservations", () => {
-  const sampleData: WeatherObservation[] = [
-    {
-      weatherDate: "2024-01-01",
-      maxTemperature: 10,
-      minTemperature: 0,
-      precipitation: 5,
-    },
-    {
-      weatherDate: "2024-01-02",
-      maxTemperature: 20,
-      minTemperature: 5,
-      precipitation: 10,
-    },
-    {
-      weatherDate: "2024-01-03",
-      maxTemperature: 15,
-      minTemperature: -2,
-      precipitation: 0,
-    },
-  ];
-
-  it("returns nulls for empty array", () => {
-    const summary = summarizeObservations([]);
-    expect(summary.observationCount).toBe(0);
-    expect(summary.avgHigh).toBeNull();
-    expect(summary.avgLow).toBeNull();
-    expect(summary.totalPrecipitation).toBe(0);
-    expect(summary.hottestDate).toBeNull();
-    expect(summary.hottestTemperature).toBeNull();
-    expect(summary.wettestDate).toBeNull();
-    expect(summary.wettestPrecipitation).toBeNull();
-  });
-
-  it("computes correct averages", () => {
-    const summary = summarizeObservations(sampleData);
-    expect(summary.observationCount).toBe(3);
-    expect(summary.avgHigh).toBeCloseTo(15);
-    expect(summary.avgLow).toBeCloseTo(1);
-  });
-
-  it("computes total precipitation", () => {
-    const summary = summarizeObservations(sampleData);
-    expect(summary.totalPrecipitation).toBe(15);
-  });
-
-  it("finds hottest day", () => {
-    const summary = summarizeObservations(sampleData);
-    expect(summary.hottestDate).toBe("2024-01-02");
-    expect(summary.hottestTemperature).toBe(20);
-  });
-
-  it("finds wettest day", () => {
-    const summary = summarizeObservations(sampleData);
-    expect(summary.wettestDate).toBe("2024-01-02");
-    expect(summary.wettestPrecipitation).toBe(10);
   });
 });
 
