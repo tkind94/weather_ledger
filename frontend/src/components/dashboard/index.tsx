@@ -11,6 +11,7 @@ import { DistributionsSection } from "./distributions";
 import { HeroSection } from "./hero";
 import { RecentAndStreaks } from "./recent-streaks";
 import { RecordsSection } from "./records";
+import { SectionBoundary } from "./section-boundary";
 import { StationsRail } from "./stations-rail";
 import { YoYSection } from "./yoy";
 import type { Range, Units } from "./format";
@@ -131,17 +132,35 @@ export function Dashboard() {
 
           {hasData && (
             <>
-              <AnomalyBanner />
-              <HeroSection />
-              <AggregatesSection />
-              <ChartSection />
-              <RecentAndStreaks />
-              <CalendarSection />
+              <SectionBoundary label="Anomaly">
+                <AnomalyBanner />
+              </SectionBoundary>
+              <SectionBoundary label="§01">
+                <HeroSection />
+              </SectionBoundary>
+              <SectionBoundary label="§02">
+                <AggregatesSection />
+              </SectionBoundary>
+              <SectionBoundary label="§03">
+                <ChartSection />
+              </SectionBoundary>
+              <SectionBoundary label="§04–05">
+                <RecentAndStreaks />
+              </SectionBoundary>
+              <SectionBoundary label="§06">
+                <CalendarSection />
+              </SectionBoundary>
               <div className="grid grid-cols-2 gap-3.5">
-                <YoYSection />
-                <RecordsSection />
+                <SectionBoundary label="§08">
+                  <YoYSection />
+                </SectionBoundary>
+                <SectionBoundary label="§07">
+                  <RecordsSection />
+                </SectionBoundary>
               </div>
-              <DistributionsSection />
+              <SectionBoundary label="§09">
+                <DistributionsSection />
+              </SectionBoundary>
             </>
           )}
         </div>
