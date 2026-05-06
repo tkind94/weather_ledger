@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useWeatherActions } from "@/hooks/use-weather";
-import { getPreference, setPreference } from "@/lib/storage";
+import { usePreference } from "@/hooks/use-preference";
 import {
   computeAnomalies,
   computeCalendarYear,
@@ -25,17 +25,6 @@ import { RecordsSection } from "./records";
 import { StationsRail } from "./stations-rail";
 import { YoYSection } from "./yoy";
 import { RANGE_DAYS, type Range, type Units } from "./format";
-
-function readPref<T extends string>(
-  key: "units" | "range",
-  fallback: T,
-  allowed: readonly T[],
-): T {
-  const raw = getPreference(key);
-  return raw && (allowed as readonly string[]).includes(raw)
-    ? (raw as T)
-    : fallback;
-}
 
 const UNITS_VALUES = ["metric", "imperial"] as const;
 const RANGE_VALUES = ["7d", "30d", "1y", "all"] as const;
@@ -76,21 +65,12 @@ export function Dashboard() {
   const { selectedLocation, observations, locations, pending, error } = state;
   const loading = pending > 0;
 
-  const [units, setUnitsState] = useState<Units>(() =>
-    readPref<Units>("units", "metric", UNITS_VALUES),
+  const [units, setUnits] = usePreference<Units>(
+    "units",
+    "metric",
+    UNITS_VALUES,
   );
-  const [range, setRangeState] = useState<Range>(() =>
-    readPref<Range>("range", "30d", RANGE_VALUES),
-  );
-
-  const setUnits = (u: Units) => {
-    setUnitsState(u);
-    setPreference("units", u);
-  };
-  const setRange = (r: Range) => {
-    setRangeState(r);
-    setPreference("range", r);
-  };
+  const [range, setRange] = usePreference<Range>("range", "30d", RANGE_VALUES);
 
   const todayVs = useMemo(
     () => computeTodayVsHistorical(observations),
