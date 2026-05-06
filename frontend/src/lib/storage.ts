@@ -42,16 +42,14 @@ export async function putLocation(location: LocationRecord): Promise<void> {
 export async function deleteLocation(locationKey: string): Promise<void> {
   const db = await getDb();
   const tx = db.transaction([LOCATIONS, OBSERVATIONS], "readwrite");
-  await Promise.all([
-    tx.objectStore(LOCATIONS).delete(locationKey),
-    tx.objectStore(OBSERVATIONS).index("byLocation").getAllKeys(locationKey),
-  ]).then(async ([, obsKeys]) => {
-    const obsStore = tx.objectStore(OBSERVATIONS);
-    for (const key of obsKeys) {
-      await obsStore.delete(key);
-    }
-    await tx.done;
-  });
+  const obsStore = tx.objectStore(OBSERVATIONS);
+  const obsKeys = await obsStore.index("byLocation").getAllKeys(locationKey);
+
+  await tx.objectStore(LOCATIONS).delete(locationKey);
+  for (const key of obsKeys) {
+    await obsStore.delete(key);
+  }
+  await tx.done;
 }
 
 export async function getObservations(

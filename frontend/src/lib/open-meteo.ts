@@ -33,17 +33,26 @@ export function observationsFromArchiveDaily(
   daily: ArchiveDaily,
 ): WeatherObservation[] {
   const results: WeatherObservation[] = [];
+  let dropped = 0;
   for (let i = 0; i < daily.time.length; i++) {
     const maxTemp = daily.temperature_2m_max[i];
     const minTemp = daily.temperature_2m_min[i];
     const precip = daily.precipitation_sum[i];
-    if (maxTemp == null || minTemp == null || precip == null) continue;
+    if (maxTemp == null || minTemp == null || precip == null) {
+      dropped++;
+      continue;
+    }
     results.push({
       weatherDate: daily.time[i]!,
       maxTemperature: maxTemp,
       minTemperature: minTemp,
       precipitation: precip,
     });
+  }
+  if (dropped > 0) {
+    console.warn(
+      `[open-meteo] dropped ${dropped}/${daily.time.length} days with null fields`,
+    );
   }
   return results;
 }

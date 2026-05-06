@@ -283,6 +283,8 @@ export function computeAnomalies(obs: WeatherObservation[]): Anomaly | null {
   };
 }
 
+type YearAccumulator = { highs: number[]; lows: number[]; precip: number };
+
 export function computeYoY(obs: WeatherObservation[]): YoYEntry[] {
   if (obs.length === 0) return [];
   const last = obs[obs.length - 1]!;
@@ -292,34 +294,31 @@ export function computeYoY(obs: WeatherObservation[]): YoYEntry[] {
     (lastDate.getTime() - yearStart.getTime()) / 86400000,
   );
 
-  const byYear: Record<
-    number,
-    { highs: number[]; lows: number[]; precip: number }
-  > = {};
+  const byYear = new Map<number, YearAccumulator>();
   for (const o of obs) {
     const d = new Date(o.weatherDate + "T00:00:00Z");
     const ys = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
     const doy = Math.floor((d.getTime() - ys.getTime()) / 86400000);
-    if (Math.abs(doy - dayOfYear) <= 3) {
-      const y = d.getUTCFullYear();
-      if (!byYear[y]) byYear[y] = { highs: [], lows: [], precip: 0 };
-      byYear[y]!.highs.push(o.maxTemperature);
-      byYear[y]!.lows.push(o.minTemperature);
-      byYear[y]!.precip += o.precipitation;
+    if (Math.abs(doy - dayOfYear) > 3) continue;
+    const year = d.getUTCFullYear();
+    let acc = byYear.get(year);
+    if (!acc) {
+      acc = { highs: [], lows: [], precip: 0 };
+      byYear.set(year, acc);
     }
+    acc.highs.push(o.maxTemperature);
+    acc.lows.push(o.minTemperature);
+    acc.precip += o.precipitation;
   }
 
-  return Object.keys(byYear)
-    .sort()
-    .map((y) => {
-      const e = byYear[+y]!;
-      return {
-        year: +y,
-        avgHigh: e.highs.reduce((a, b) => a + b, 0) / e.highs.length,
-        avgLow: e.lows.reduce((a, b) => a + b, 0) / e.lows.length,
-        precip: e.precip,
-      };
-    });
+  return [...byYear.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([year, e]) => ({
+      year,
+      avgHigh: e.highs.reduce((a, b) => a + b, 0) / e.highs.length,
+      avgLow: e.lows.reduce((a, b) => a + b, 0) / e.lows.length,
+      precip: e.precip,
+    }));
 }
 
 export function computeTempHistogram(

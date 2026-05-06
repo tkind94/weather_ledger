@@ -64,14 +64,21 @@ export function fmtDateYear(s: string): string {
   });
 }
 
+const toHex = (n: number) =>
+  Math.round(Math.max(0, Math.min(255, n)))
+    .toString(16)
+    .padStart(2, "0");
+
 // Continuous cold→hot ramp for heatmap and histogram cells.
+// Returns hex (not rgb()) so it composes with the rest of the palette,
+// which uses hex everywhere — including alpha overlays like `${color}33`.
 export function tempColor(t: number, tMin: number, tMax: number): string {
   const norm =
     tMax === tMin ? 0.5 : Math.max(0, Math.min(1, (t - tMin) / (tMax - tMin)));
-  const r = Math.round(63 + 113 * norm);
-  const g = Math.round(107 - 21 * norm);
-  const b = Math.round(107 - 49 * norm);
-  return `rgb(${r},${g},${b})`;
+  const r = 63 + 113 * norm;
+  const g = 107 - 21 * norm;
+  const b = 107 - 49 * norm;
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
 export { palette };
