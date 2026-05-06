@@ -3,12 +3,14 @@ import ReactECharts from "echarts-for-react";
 import type { WeatherObservation } from "@/lib/weather";
 import { monoText, tooltipBase } from "@/lib/echarts-theme";
 import { Frame, Mono } from "./primitives";
-import { palette } from "./format";
+import { convertTemp, fmtTemp, palette, type Units } from "./format";
 
 export function CalendarSection({
   calYear,
+  units,
 }: {
   calYear: WeatherObservation[];
+  units: Units;
 }) {
   const option = useMemo(() => {
     if (calYear.length === 0) return null;
@@ -20,8 +22,10 @@ export function CalendarSection({
     return {
       tooltip: {
         ...tooltipBase,
-        formatter: (p: { data: [string, number] }) =>
-          `${p.data[0]} · ${p.data[1].toFixed(1)}°C`,
+        formatter: (p: { data: [string, number] }) => {
+          const [date, c] = p.data;
+          return `${date} · ${convertTemp(c, units).toFixed(1)}${units === "imperial" ? "°F" : "°C"}`;
+        },
       },
       visualMap: {
         show: false,
@@ -42,11 +46,7 @@ export function CalendarSection({
           color: palette.faint,
         },
         yearLabel: { show: false },
-        monthLabel: {
-          ...monoText,
-          fontSize: 9,
-          margin: 8,
-        },
+        monthLabel: { ...monoText, fontSize: 9, margin: 8 },
         dayLabel: {
           ...monoText,
           fontSize: 9,
@@ -62,12 +62,12 @@ export function CalendarSection({
         },
       ],
     };
-  }, [calYear]);
+  }, [calYear, units]);
 
   if (!option) return null;
 
-  const tMin = Math.min(...calYear.map((o) => o.maxTemperature));
-  const tMax = Math.max(...calYear.map((o) => o.maxTemperature));
+  const tMinC = Math.min(...calYear.map((o) => o.maxTemperature));
+  const tMaxC = Math.max(...calYear.map((o) => o.maxTemperature));
 
   return (
     <Frame label="§06 Calendar Heatmap · last 365 days · daily max temperature">
@@ -78,14 +78,18 @@ export function CalendarSection({
           opts={{ renderer: "svg" }}
         />
         <div className="mt-1.5 flex items-center gap-1.5">
-          <Mono className="text-[9px] text-ink-soft">{tMin.toFixed(0)}°C</Mono>
+          <Mono className="text-[9px] text-ink-soft">
+            {fmtTemp(tMinC, units)}
+          </Mono>
           <div
             className="h-2 w-20 rounded-sm"
             style={{
               background: `linear-gradient(to right, ${palette.cold}, ${palette.mute}, ${palette.hot})`,
             }}
           />
-          <Mono className="text-[9px] text-ink-soft">{tMax.toFixed(0)}°C</Mono>
+          <Mono className="text-[9px] text-ink-soft">
+            {fmtTemp(tMaxC, units)}
+          </Mono>
         </div>
       </div>
     </Frame>

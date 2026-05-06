@@ -178,7 +178,7 @@ export function Dashboard() {
               streaks={streaks}
               units={units}
             />
-            <CalendarSection calYear={calYear} />
+            <CalendarSection calYear={calYear} units={units} />
             <div className="grid grid-cols-2 gap-3.5">
               <YoYSection yoy={yoy} units={units} />
               {records && <RecordsSection records={records} units={units} />}

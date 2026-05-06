@@ -10,23 +10,41 @@ export const RANGE_DAYS: Record<Range, number | null> = {
   all: null,
 };
 
-export function fmtTemp(c: number, units: Units): string {
-  return units === "imperial"
-    ? `${((c * 9) / 5 + 32).toFixed(0)}°F`
-    : `${c.toFixed(0)}°C`;
+// Conversion: absolute temperature (Celsius → display unit).
+export function convertTemp(c: number, units: Units): number {
+  return units === "imperial" ? (c * 9) / 5 + 32 : c;
 }
 
-// Temperature *difference*, not absolute. Skip the 32° offset.
+// Conversion: temperature difference (skip the 32° offset).
+export function convertTempDelta(c: number, units: Units): number {
+  return units === "imperial" ? (c * 9) / 5 : c;
+}
+
+export function convertPrecip(mm: number, units: Units): number {
+  return units === "imperial" ? mm / 25.4 : mm;
+}
+
+export function tempUnitLabel(units: Units): string {
+  return units === "imperial" ? "°F" : "°C";
+}
+
+export function precipUnitLabel(units: Units): string {
+  return units === "imperial" ? '"' : "mm";
+}
+
+export function fmtTemp(c: number, units: Units): string {
+  return `${convertTemp(c, units).toFixed(0)}${tempUnitLabel(units)}`;
+}
+
 export function fmtTempDelta(c: number, units: Units): string {
-  return units === "imperial"
-    ? `${((c * 9) / 5).toFixed(0)}°F`
-    : `${c.toFixed(0)}°C`;
+  return `${convertTempDelta(c, units).toFixed(0)}${tempUnitLabel(units)}`;
 }
 
 export function fmtPrecip(mm: number, units: Units): string {
+  const value = convertPrecip(mm, units);
   return units === "imperial"
-    ? `${(mm / 25.4).toFixed(2)}"`
-    : `${mm.toFixed(1)}mm`;
+    ? `${value.toFixed(2)}"`
+    : `${value.toFixed(1)}mm`;
 }
 
 export function fmtDate(s: string): string {
