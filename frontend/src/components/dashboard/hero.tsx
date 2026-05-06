@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { TodayVsHistorical } from "@/lib/weather";
+import { computeTodayVsHistorical } from "@/lib/weather";
 import {
   Caption,
   DeltaPill,
@@ -8,6 +8,7 @@ import {
   Mono,
   ObservationsTable,
 } from "./primitives";
+import { useObservations, useUnits } from "./context";
 import { fmtDate, fmtDateYear, fmtPrecip, fmtTemp, type Units } from "./format";
 
 function HeroNumber({
@@ -36,21 +37,24 @@ function HeroNumber({
   );
 }
 
-export function HeroSection({
-  todayVs,
-  units,
-}: {
-  todayVs: TodayVsHistorical;
-  units: Units;
-}) {
-  const today = todayVs.today;
+export function HeroSection() {
+  const observations = useObservations();
+  const units = useUnits();
+  const todayVs = useMemo(
+    () => computeTodayVsHistorical(observations),
+    [observations],
+  );
   const history = useMemo(
     () =>
-      [...todayVs.sameDayHistory].sort((a, b) =>
-        b.weatherDate.localeCompare(a.weatherDate),
-      ),
-    [todayVs.sameDayHistory],
+      todayVs
+        ? [...todayVs.sameDayHistory].sort((a, b) =>
+            b.weatherDate.localeCompare(a.weatherDate),
+          )
+        : [],
+    [todayVs],
   );
+  if (!todayVs) return null;
+  const today = todayVs.today;
 
   return (
     <Frame label={`§01 Today vs. Historical · ${fmtDate(today.weatherDate)}`}>

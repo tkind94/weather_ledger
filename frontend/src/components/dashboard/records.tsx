@@ -1,15 +1,16 @@
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
-import type { Records } from "@/lib/weather";
+import { computeRecords } from "@/lib/weather";
 import { Frame, StatBlock } from "./primitives";
-import { fmtDateYear, fmtPrecip, fmtTemp, palette, type Units } from "./format";
+import { useObservations, useUnits } from "./context";
+import { fmtDateYear, fmtPrecip, fmtTemp, palette } from "./format";
 
-export function RecordsSection({
-  records,
-  units,
-}: {
-  records: Records;
-  units: Units;
-}) {
+export function RecordsSection() {
+  const observations = useObservations();
+  const units = useUnits();
+  const records = useMemo(() => computeRecords(observations), [observations]);
+  if (!records) return null;
+
   const items = [
     {
       label: "HIGHEST MAX",

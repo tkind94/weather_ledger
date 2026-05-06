@@ -1,15 +1,16 @@
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
-import type { Anomaly } from "@/lib/weather";
+import { computeAnomalies } from "@/lib/weather";
 import { Caption } from "./primitives";
-import { fmtTemp, fmtTempDelta, type Units } from "./format";
+import { useObservations, useUnits } from "./context";
+import { fmtTemp, fmtTempDelta } from "./format";
 
-export function AnomalyBanner({
-  anomaly,
-  units,
-}: {
-  anomaly: Anomaly;
-  units: Units;
-}) {
+export function AnomalyBanner() {
+  const observations = useObservations();
+  const units = useUnits();
+  const anomaly = useMemo(() => computeAnomalies(observations), [observations]);
+  if (!anomaly) return null;
+
   const warmer = anomaly.label === "warmer";
   const tone = warmer ? "hot" : "cold";
   const sign = anomaly.delta >= 0 ? "+" : "";

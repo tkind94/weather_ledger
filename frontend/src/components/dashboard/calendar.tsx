@@ -1,30 +1,33 @@
 import { useMemo } from "react";
 import ReactECharts from "echarts-for-react";
-import type { WeatherObservation } from "@/lib/weather";
+import { computeCalendarYear } from "@/lib/weather";
 import { monoText, tooltipBase } from "@/lib/echarts-theme";
 import { Frame, Mono } from "./primitives";
-import { convertTemp, fmtTemp, palette, type Units } from "./format";
+import { useObservations, useUnits } from "./context";
+import { convertTemp, fmtTemp, palette, tempUnitLabel } from "./format";
 
-export function CalendarSection({
-  calYear,
-  units,
-}: {
-  calYear: WeatherObservation[];
-  units: Units;
-}) {
+export function CalendarSection() {
+  const observations = useObservations();
+  const units = useUnits();
+  const calYear = useMemo(
+    () => computeCalendarYear(observations),
+    [observations],
+  );
+
   const option = useMemo(() => {
     if (calYear.length === 0) return null;
     const tMin = Math.min(...calYear.map((o) => o.maxTemperature));
     const tMax = Math.max(...calYear.map((o) => o.maxTemperature));
     const first = calYear[0]!.weatherDate;
     const last = calYear[calYear.length - 1]!.weatherDate;
+    const unit = tempUnitLabel(units);
 
     return {
       tooltip: {
         ...tooltipBase,
         formatter: (p: { data: [string, number] }) => {
           const [date, c] = p.data;
-          return `${date} · ${convertTemp(c, units).toFixed(1)}${units === "imperial" ? "°F" : "°C"}`;
+          return `${date} · ${convertTemp(c, units).toFixed(1)}${unit}`;
         },
       },
       visualMap: {

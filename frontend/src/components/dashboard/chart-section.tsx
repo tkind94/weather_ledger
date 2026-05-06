@@ -1,16 +1,11 @@
 import { WeatherChart } from "@/components/weather-chart";
-import type { WeatherObservation } from "@/lib/weather";
-import { RANGE_DAYS, type Range, type Units } from "./format";
+import { useObservations, useRange, useUnits } from "./context";
+import { RANGE_DAYS } from "./format";
 
-export function ChartSection({
-  observations,
-  units,
-  range,
-}: {
-  observations: WeatherObservation[];
-  units: Units;
-  range: Range;
-}) {
+export function ChartSection() {
+  const observations = useObservations();
+  const units = useUnits();
+  const range = useRange();
   const days = RANGE_DAYS[range];
   const filtered = days !== null ? observations.slice(-days) : observations;
   return <WeatherChart observations={filtered} units={units} />;

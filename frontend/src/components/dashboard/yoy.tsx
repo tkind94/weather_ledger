@@ -1,11 +1,16 @@
 import { useMemo } from "react";
 import ReactECharts from "echarts-for-react";
-import type { YoYEntry } from "@/lib/weather";
+import { computeYoY } from "@/lib/weather";
 import { monoText, tooltipBase } from "@/lib/echarts-theme";
 import { Frame } from "./primitives";
-import { fmtTemp, palette, type Units } from "./format";
+import { useObservations, useUnits } from "./context";
+import { fmtTemp, palette } from "./format";
 
-export function YoYSection({ yoy, units }: { yoy: YoYEntry[]; units: Units }) {
+export function YoYSection() {
+  const observations = useObservations();
+  const units = useUnits();
+  const yoy = useMemo(() => computeYoY(observations), [observations]);
+
   const option = useMemo(() => {
     if (yoy.length === 0) return null;
     const allTemps = yoy.flatMap((e) => [e.avgHigh, e.avgLow]);
@@ -13,9 +18,8 @@ export function YoYSection({ yoy, units }: { yoy: YoYEntry[]; units: Units }) {
     const tMax = Math.max(...allTemps);
 
     // Two stacked horizontal bars per year:
-    //   pad   — invisible, runs from xAxis 0 up to (avgLow - tMin)
-    //   range — visible, runs from there to (avgHigh - tMin)
-    // Hot color hints daily diurnal range, cold gives leading offset.
+    //   pad   — runs from tMin up to avgLow (the "leading offset" cold bar)
+    //   range — runs from avgLow to avgHigh (the diurnal range hot bar)
     const years = yoy.map((e) => String(e.year));
     const padData = yoy.map((e) => +(e.avgLow - tMin).toFixed(2));
     const rangeData = yoy.map((e) => +(e.avgHigh - e.avgLow).toFixed(2));
@@ -41,7 +45,6 @@ export function YoYSection({ yoy, units }: { yoy: YoYEntry[]; units: Units }) {
       yAxis: {
         type: "category",
         data: years,
-        inverse: false,
         axisLine: { show: false },
         axisTick: { show: false },
         axisLabel: { ...monoText, fontSize: 10 },

@@ -1,6 +1,8 @@
-import type { Streaks, WeatherObservation } from "@/lib/weather";
+import { useMemo } from "react";
+import { computeStreaks, type Streaks } from "@/lib/weather";
 import { Frame, ObservationsTable, StatBlock } from "./primitives";
-import { fmtDate, palette, type Units } from "./format";
+import { useObservations, useUnits } from "./context";
+import { fmtDate, palette } from "./format";
 
 function buildStreakItems(streaks: Streaks) {
   const range = streaks.longestDryRange;
@@ -37,16 +39,14 @@ function buildStreakItems(streaks: Streaks) {
   ];
 }
 
-export function RecentAndStreaks({
-  observations,
-  streaks,
-  units,
-}: {
-  observations: WeatherObservation[];
-  streaks: Streaks;
-  units: Units;
-}) {
-  const recent = observations.slice(-14).reverse();
+export function RecentAndStreaks() {
+  const observations = useObservations();
+  const units = useUnits();
+  const streaks = useMemo(() => computeStreaks(observations), [observations]);
+  const recent = useMemo(
+    () => observations.slice(-14).reverse(),
+    [observations],
+  );
   const items = buildStreakItems(streaks);
 
   return (

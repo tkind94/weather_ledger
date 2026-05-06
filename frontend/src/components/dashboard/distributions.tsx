@@ -1,8 +1,14 @@
 import { useMemo } from "react";
 import ReactECharts from "echarts-for-react";
-import type { PrecipBucket, TempHistogram } from "@/lib/weather";
+import {
+  computePrecipHistogram,
+  computeTempHistogram,
+  type PrecipBucket,
+  type TempHistogram,
+} from "@/lib/weather";
 import { monoText, tooltipBase } from "@/lib/echarts-theme";
 import { Caption, Frame } from "./primitives";
+import { useObservations, useUnits } from "./context";
 import { fmtTemp, palette, tempColor, type Units } from "./format";
 
 function useTempOption(hist: TempHistogram, units: Units) {
@@ -48,13 +54,7 @@ function useTempOption(hist: TempHistogram, units: Units) {
         },
       },
       yAxis: { type: "value", show: false },
-      series: [
-        {
-          type: "bar",
-          data,
-          barCategoryGap: "20%",
-        },
-      ],
+      series: [{ type: "bar", data, barCategoryGap: "20%" }],
     };
   }, [hist, units]);
 }
@@ -81,11 +81,7 @@ function usePrecipOption(buckets: PrecipBucket[]) {
         {
           type: "bar",
           data: buckets.map((b) => b.count),
-          itemStyle: {
-            color: palette.sage,
-            opacity: 0.75,
-            borderRadius: 1,
-          },
+          itemStyle: { color: palette.sage, opacity: 0.75, borderRadius: 1 },
           label: {
             show: true,
             position: "top",
@@ -100,15 +96,17 @@ function usePrecipOption(buckets: PrecipBucket[]) {
   );
 }
 
-export function DistributionsSection({
-  tempHist,
-  precipHist,
-  units,
-}: {
-  tempHist: TempHistogram;
-  precipHist: PrecipBucket[];
-  units: Units;
-}) {
+export function DistributionsSection() {
+  const observations = useObservations();
+  const units = useUnits();
+  const tempHist = useMemo(
+    () => computeTempHistogram(observations),
+    [observations],
+  );
+  const precipHist = useMemo(
+    () => computePrecipHistogram(observations, units),
+    [observations, units],
+  );
   const tempOption = useTempOption(tempHist, units);
   const precipOption = usePrecipOption(precipHist);
 

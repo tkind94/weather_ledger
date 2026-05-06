@@ -1,33 +1,25 @@
-import { useMemo } from "react";
 import { useWeatherActions } from "@/hooks/use-weather";
 import { usePreference } from "@/hooks/use-preference";
-import {
-  computeAnomalies,
-  computeCalendarYear,
-  computePrecipHistogram,
-  computeRangeAgg,
-  computeRecords,
-  computeStreaks,
-  computeTempHistogram,
-  computeTodayVsHistorical,
-  computeYoY,
-} from "@/lib/weather";
 import { Mono, Placeholder } from "./primitives";
 import { AggregatesSection } from "./aggregates";
 import { AnomalyBanner } from "./anomaly";
 import { AppHeader } from "./header";
 import { CalendarSection } from "./calendar";
 import { ChartSection } from "./chart-section";
+import { DashboardProvider } from "./context";
 import { DistributionsSection } from "./distributions";
 import { HeroSection } from "./hero";
 import { RecentAndStreaks } from "./recent-streaks";
 import { RecordsSection } from "./records";
 import { StationsRail } from "./stations-rail";
 import { YoYSection } from "./yoy";
-import { RANGE_DAYS, type Range, type Units } from "./format";
+import type { Range, Units } from "./format";
 
 const UNITS_VALUES = ["metric", "imperial"] as const;
 const RANGE_VALUES = ["7d", "30d", "1y", "all"] as const;
+
+const GRID_BG =
+  "repeating-linear-gradient(0deg, hsl(var(--faint) / 0.125) 0 1px, transparent 1px 24px), repeating-linear-gradient(90deg, hsl(var(--faint) / 0.125) 0 1px, transparent 1px 24px)";
 
 function ErrorBanner({
   message,
@@ -52,6 +44,25 @@ function ErrorBanner({
   );
 }
 
+function Footer({ count }: { count: number }) {
+  return (
+    <footer className="mt-4 flex justify-between border-t-2 border-ink bg-paper px-[18px] py-2.5">
+      <Mono
+        className="text-[9px] text-ink-soft"
+        style={{ letterSpacing: "0.18em" }}
+      >
+        WEATHER LEDGER · DATA · OPEN-METEO.COM · OPEN-METEO GEOCODING API
+      </Mono>
+      <Mono
+        className="text-[9px] text-ink-soft"
+        style={{ letterSpacing: "0.1em" }}
+      >
+        {count > 0 ? `${count} OBSERVATIONS ON FILE` : "NO DATA"}
+      </Mono>
+    </footer>
+  );
+}
+
 export function Dashboard() {
   const {
     state,
@@ -64,6 +75,7 @@ export function Dashboard() {
 
   const { selectedLocation, observations, locations, pending, error } = state;
   const loading = pending > 0;
+  const hasData = observations.length > 0;
 
   const [units, setUnits] = usePreference<Units>(
     "units",
@@ -72,123 +84,70 @@ export function Dashboard() {
   );
   const [range, setRange] = usePreference<Range>("range", "30d", RANGE_VALUES);
 
-  const todayVs = useMemo(
-    () => computeTodayVsHistorical(observations),
-    [observations],
-  );
-  const records = useMemo(() => computeRecords(observations), [observations]);
-  const streaks = useMemo(() => computeStreaks(observations), [observations]);
-  const anomaly = useMemo(() => computeAnomalies(observations), [observations]);
-  const yoy = useMemo(() => computeYoY(observations), [observations]);
-  const tempHist = useMemo(
-    () => computeTempHistogram(observations),
-    [observations],
-  );
-  const precipHist = useMemo(
-    () => computePrecipHistogram(observations, units),
-    [observations, units],
-  );
-  const calYear = useMemo(
-    () => computeCalendarYear(observations),
-    [observations],
-  );
-  const rangeAgg = useMemo(
-    () => computeRangeAgg(observations, RANGE_DAYS[range]),
-    [observations, range],
-  );
-
-  const hasData = observations.length > 0;
-  const gridBg = `repeating-linear-gradient(0deg, hsl(var(--faint) / 0.125) 0 1px, transparent 1px 24px), repeating-linear-gradient(90deg, hsl(var(--faint) / 0.125) 0 1px, transparent 1px 24px)`;
-
   return (
-    <div
-      className="min-h-screen bg-paper font-display text-ink"
-      style={{ backgroundImage: gridBg }}
-    >
-      <AppHeader
-        units={units}
-        setUnits={setUnits}
-        range={range}
-        setRange={setRange}
-        location={selectedLocation}
-      />
-
-      <div className="mx-auto flex max-w-[1440px] flex-col gap-3.5 p-4">
-        <StationsRail
-          locations={locations}
-          selectedKey={selectedLocation?.locationKey ?? null}
-          onSelect={selectLocation}
-          onSearch={searchLocations}
-          onCache={cacheLocation}
-          onDelete={deleteLocation}
-          onRefresh={refreshCurrentLocation}
-          loading={loading}
+    <DashboardProvider units={units} range={range} observations={observations}>
+      <div
+        className="min-h-screen bg-paper font-display text-ink"
+        style={{ backgroundImage: GRID_BG }}
+      >
+        <AppHeader
+          units={units}
+          setUnits={setUnits}
+          range={range}
+          setRange={setRange}
+          location={selectedLocation}
         />
 
-        {error && (
-          <ErrorBanner
-            message={error}
-            onRetry={refreshCurrentLocation}
+        <div className="mx-auto flex max-w-[1440px] flex-col gap-3.5 p-4">
+          <StationsRail
+            locations={locations}
+            selectedKey={selectedLocation?.locationKey ?? null}
+            onSelect={selectLocation}
+            onSearch={searchLocations}
+            onCache={cacheLocation}
+            onDelete={deleteLocation}
+            onRefresh={refreshCurrentLocation}
             loading={loading}
           />
-        )}
 
-        {!selectedLocation && !loading && (
-          <Placeholder
-            dashed
-            message="Search for a station above to load weather data."
-          />
-        )}
+          {error && (
+            <ErrorBanner
+              message={error}
+              onRetry={refreshCurrentLocation}
+              loading={loading}
+            />
+          )}
 
-        {loading && !hasData && <Placeholder message="Loading station data…" />}
+          {!selectedLocation && !loading && (
+            <Placeholder
+              dashed
+              message="Search for a station above to load weather data."
+            />
+          )}
 
-        {hasData && (
-          <>
-            {anomaly && <AnomalyBanner anomaly={anomaly} units={units} />}
-            {todayVs && <HeroSection todayVs={todayVs} units={units} />}
-            {rangeAgg && (
-              <AggregatesSection agg={rangeAgg} units={units} range={range} />
-            )}
-            <ChartSection
-              observations={observations}
-              units={units}
-              range={range}
-            />
-            <RecentAndStreaks
-              observations={observations}
-              streaks={streaks}
-              units={units}
-            />
-            <CalendarSection calYear={calYear} units={units} />
-            <div className="grid grid-cols-2 gap-3.5">
-              <YoYSection yoy={yoy} units={units} />
-              {records && <RecordsSection records={records} units={units} />}
-            </div>
-            <DistributionsSection
-              tempHist={tempHist}
-              precipHist={precipHist}
-              units={units}
-            />
-          </>
-        )}
+          {loading && !hasData && (
+            <Placeholder message="Loading station data…" />
+          )}
+
+          {hasData && (
+            <>
+              <AnomalyBanner />
+              <HeroSection />
+              <AggregatesSection />
+              <ChartSection />
+              <RecentAndStreaks />
+              <CalendarSection />
+              <div className="grid grid-cols-2 gap-3.5">
+                <YoYSection />
+                <RecordsSection />
+              </div>
+              <DistributionsSection />
+            </>
+          )}
+        </div>
+
+        <Footer count={observations.length} />
       </div>
-
-      <footer className="mt-4 flex justify-between border-t-2 border-ink bg-paper px-[18px] py-2.5">
-        <Mono
-          className="text-[9px] text-ink-soft"
-          style={{ letterSpacing: "0.18em" }}
-        >
-          WEATHER LEDGER · DATA · OPEN-METEO.COM · OPEN-METEO GEOCODING API
-        </Mono>
-        <Mono
-          className="text-[9px] text-ink-soft"
-          style={{ letterSpacing: "0.1em" }}
-        >
-          {observations.length > 0
-            ? `${observations.length} OBSERVATIONS ON FILE`
-            : "NO DATA"}
-        </Mono>
-      </footer>
-    </div>
+    </DashboardProvider>
   );
 }

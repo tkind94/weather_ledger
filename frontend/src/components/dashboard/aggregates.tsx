@@ -1,16 +1,19 @@
-import type { RangeAgg } from "@/lib/weather";
+import { useMemo } from "react";
+import { computeRangeAgg } from "@/lib/weather";
 import { Bigstat, Frame } from "./primitives";
-import { fmtDate, fmtPrecip, fmtTemp, type Units } from "./format";
+import { useObservations, useRange, useUnits } from "./context";
+import { RANGE_DAYS, fmtDate, fmtPrecip, fmtTemp } from "./format";
 
-export function AggregatesSection({
-  agg,
-  units,
-  range,
-}: {
-  agg: RangeAgg;
-  units: Units;
-  range: string;
-}) {
+export function AggregatesSection() {
+  const observations = useObservations();
+  const units = useUnits();
+  const range = useRange();
+  const agg = useMemo(
+    () => computeRangeAgg(observations, RANGE_DAYS[range]),
+    [observations, range],
+  );
+  if (!agg) return null;
+
   return (
     <Frame label={`§02 Summary · ${range.toUpperCase()} · ${agg.n} days`}>
       <div className="grid grid-cols-5">
