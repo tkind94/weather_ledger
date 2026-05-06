@@ -6,7 +6,7 @@ import { Frame, Mono } from "./primitives";
 import { useObservations, useUnits } from "./context";
 import { convertTemp, fmtTemp, palette, tempUnitLabel } from "./format";
 
-export function CalendarSection() {
+export default function CalendarSection() {
   const observations = useObservations();
   const units = useUnits();
   const calYear = useMemo(

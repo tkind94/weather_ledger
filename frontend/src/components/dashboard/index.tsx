@@ -1,20 +1,34 @@
+import { lazy, Suspense } from "react";
 import { useWeatherActions } from "@/hooks/use-weather";
 import { usePreference } from "@/hooks/use-preference";
-import { Mono, Placeholder } from "./primitives";
+import { Frame, Mono, Placeholder } from "./primitives";
 import { AggregatesSection } from "./aggregates";
 import { AnomalyBanner } from "./anomaly";
 import { AppHeader } from "./header";
-import { CalendarSection } from "./calendar";
-import { ChartSection } from "./chart-section";
 import { DashboardProvider } from "./context";
-import { DistributionsSection } from "./distributions";
 import { HeroSection } from "./hero";
 import { RecentAndStreaks } from "./recent-streaks";
 import { RecordsSection } from "./records";
 import { SectionBoundary } from "./section-boundary";
 import { StationsRail } from "./stations-rail";
-import { YoYSection } from "./yoy";
 import type { Range, Units } from "./format";
+
+// ECharts is ~1MB. Defer it past first paint so the header, station rail,
+// hero, and §02 summary render immediately.
+const ChartSection = lazy(() => import("./chart-section"));
+const CalendarSection = lazy(() => import("./calendar"));
+const YoYSection = lazy(() => import("./yoy"));
+const DistributionsSection = lazy(() => import("./distributions"));
+
+function ChartFallback({ label }: { label: string }) {
+  return (
+    <Frame label={label}>
+      <div className="flex h-[160px] items-center justify-center">
+        <Mono className="text-[11px] text-ink-soft">loading chart…</Mono>
+      </div>
+    </Frame>
+  );
+}
 
 const UNITS_VALUES = ["metric", "imperial"] as const;
 const RANGE_VALUES = ["7d", "30d", "1y", "all"] as const;
@@ -142,24 +156,34 @@ export function Dashboard() {
                 <AggregatesSection />
               </SectionBoundary>
               <SectionBoundary label="§03">
-                <ChartSection />
+                <Suspense fallback={<ChartFallback label="§03 Trends" />}>
+                  <ChartSection />
+                </Suspense>
               </SectionBoundary>
               <SectionBoundary label="§04–05">
                 <RecentAndStreaks />
               </SectionBoundary>
               <SectionBoundary label="§06">
-                <CalendarSection />
+                <Suspense fallback={<ChartFallback label="§06 Calendar" />}>
+                  <CalendarSection />
+                </Suspense>
               </SectionBoundary>
               <div className="grid grid-cols-2 gap-3.5">
                 <SectionBoundary label="§08">
-                  <YoYSection />
+                  <Suspense fallback={<ChartFallback label="§08 YoY" />}>
+                    <YoYSection />
+                  </Suspense>
                 </SectionBoundary>
                 <SectionBoundary label="§07">
                   <RecordsSection />
                 </SectionBoundary>
               </div>
               <SectionBoundary label="§09">
-                <DistributionsSection />
+                <Suspense
+                  fallback={<ChartFallback label="§09 Distributions" />}
+                >
+                  <DistributionsSection />
+                </Suspense>
               </SectionBoundary>
             </>
           )}

@@ -96,7 +96,7 @@ function usePrecipOption(buckets: PrecipBucket[]) {
   );
 }
 
-export function DistributionsSection() {
+export default function DistributionsSection() {
   const observations = useObservations();
   const units = useUnits();
   const tempHist = useMemo(

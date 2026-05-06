@@ -6,7 +6,7 @@ import { Frame } from "./primitives";
 import { useObservations, useUnits } from "./context";
 import { fmtTemp, palette } from "./format";
 
-export function YoYSection() {
+export default function YoYSection() {
   const observations = useObservations();
   const units = useUnits();
   const yoy = useMemo(() => computeYoY(observations), [observations]);

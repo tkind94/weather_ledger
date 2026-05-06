@@ -2,7 +2,7 @@ import { WeatherChart } from "@/components/weather-chart";
 import { useObservations, useRange, useUnits } from "./context";
 import { RANGE_DAYS } from "./format";
 
-export function ChartSection() {
+export default function ChartSection() {
   const observations = useObservations();
   const units = useUnits();
   const range = useRange();
